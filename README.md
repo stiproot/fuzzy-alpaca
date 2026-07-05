@@ -2,8 +2,9 @@
 
 HTTP trading API wrapping [Alpaca](https://alpaca.markets) for a machine consumer — an external
 workflow orchestrator whose agents place trades and gather market intelligence. Built with
-Effect-TS in a hexagonal layout. See `PLAN.md` for the full architecture, contract, and milestone
-history.
+Effect-TS in a hexagonal layout. The as-built design lives in
+[docs/architecture.md](docs/architecture.md); historical plan documents (per-task change logs)
+live in [docs/plans/](docs/plans/).
 
 ## Quick start
 

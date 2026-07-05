@@ -1,4 +1,10 @@
-# fuzzy-alpaca-core — Implementation Plan
+# fuzzy-alpaca-core — MVP Implementation Plan
+
+> **Historical plan document — task completed 2026-07-05.** Plans are transient,
+> detailed change logs. Durable context has been extracted to
+> [docs/architecture.md](../architecture.md) (blueprint), [README.md](../../README.md)
+> (API + runbook), and [CLAUDE.md](../../CLAUDE.md) (working conventions). Do not treat
+> this file as current documentation — read the permanent docs and the code.
 
 ## Overview
 
