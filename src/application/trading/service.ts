@@ -1,4 +1,4 @@
-import { Cache, DateTime, Effect, Option, Schema } from "effect"
+import { Cache, DateTime, Effect, Metric, Option, Schema } from "effect"
 import {
   AlpacaUnavailable,
   AssetNotFound,
@@ -38,6 +38,11 @@ export type PlaceOrderError =
   | AssetNotTradable
   | InsufficientBuyingPower
   | PdtRuleViolation
+
+export const ordersPlacedTotal = Metric.counter("orders_placed_total", {
+  description: "Orders successfully placed (excluding idempotent replays), by trading mode",
+  incremental: true,
+})
 
 // Order states in which a cancel request is already moot — a repeated cancel
 // returns the current state instead of erroring.
@@ -174,7 +179,15 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
             type: req.type,
             outcome: response.orderId,
             idempotentReplay: response.idempotentReplay,
-          })
+          }).pipe(
+            Effect.andThen(
+              response.idempotentReplay
+                ? Effect.void
+                : Metric.increment(
+                    Metric.tagged(ordersPlacedTotal, "trading_mode", config.tradingMode)
+                  )
+            )
+          )
         ),
         Effect.tapError((error) =>
           audit("createOrder.failed", {

@@ -1,4 +1,4 @@
-import { HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform"
 import { Schema } from "effect"
 import { Account } from "../../../../domain/schemas/account.js"
 import { Clock } from "../../../../domain/schemas/clock.js"
@@ -27,6 +27,8 @@ export const WhoamiResponse = Schema.Struct({
 
 export const systemGroup = HttpApiGroup.make("system")
   .add(HttpApiEndpoint.get("health", "/health").addSuccess(HealthResponse))
+  // Prometheus scrape target — unauthenticated like /health
+  .add(HttpApiEndpoint.get("metrics", "/metrics").addSuccess(HttpApiSchema.Text()))
   .add(
     HttpApiEndpoint.get("whoami", "/v1/whoami")
       .addSuccess(WhoamiResponse)

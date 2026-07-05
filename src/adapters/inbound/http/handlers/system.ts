@@ -1,8 +1,9 @@
 import { HttpApiBuilder } from "@effect/platform"
-import { DateTime, Effect } from "effect"
+import { DateTime, Effect, Metric } from "effect"
 import { TradingService } from "../../../../application/trading/service.js"
 import { AppConfig } from "../../../../config.js"
 import { Api } from "../api.js"
+import { formatPrometheus } from "../prometheus.js"
 
 export const SystemHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
   handlers
@@ -20,6 +21,7 @@ export const SystemHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
         }
       })
     )
+    .handle("metrics", () => Metric.snapshot.pipe(Effect.map(formatPrometheus)))
     .handle("whoami", () =>
       Effect.gen(function* () {
         const config = yield* AppConfig

@@ -1,4 +1,4 @@
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
+import { NodeHttpClient, NodeHttpServer, NodeRuntime } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import { createServer } from "node:http"
 import { AppConfig } from "./config.js"
@@ -19,7 +19,12 @@ const ServerLive = Layer.unwrapEffect(
 NodeRuntime.runMain(
   Layer.launch(
     HttpAppLive.pipe(
-      Layer.provide(AlpacaClientLive.pipe(Layer.provide(AppConfig.Default))),
+      Layer.provide(
+        AlpacaClientLive.pipe(
+          Layer.provide(AppConfig.Default),
+          Layer.provide(NodeHttpClient.layer)
+        )
+      ),
       Layer.provide(ServerLive)
     )
   )

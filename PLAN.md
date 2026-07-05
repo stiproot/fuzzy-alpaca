@@ -17,7 +17,7 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 | 3. Order write path | ✅ done (2026-07-05) | Orchestrator can trade. Live paper verify: place → replay → cancel |
 | 4. Order read + replace | ✅ done (2026-07-05) | Live replace pending market hours (Alpaca rejects replace of `accepted` orders while closed) — rolls into M6 smoke |
 | 5. Positions | ✅ done (2026-07-05) | Live partial-close verification deferred to M6 market-hours smoke (needs a filled position; smoke stays read-only on real positions) |
-| 6. Market intelligence + ops hardening | ⬜ not started | |
+| 6. Market intelligence + ops hardening | ✅ done (2026-07-05) | All 21 routes locked by OpenAPI snapshot test; bars token verified against live Alpaca. Outstanding: market-hours live checks (replace, position close via a filled order) — the code paths are test-proven |
 
 **Milestone 1 deltas from plan:**
 - Added `GET /v1/whoami` (authenticated, returns `{ authenticated, tradingMode }`) so auth and the 401 envelope are exercisable before milestone 2's endpoints exist — also a cheap connectivity check for the orchestrator. MVP is 20 routes, not 19.
@@ -54,6 +54,14 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 - Position price/P&L wire fields decode as `OptionFromNullOr` (nullable in edge states — fresh positions, halted symbols); core fields (`qty`, `avgEntryPrice`, `costBasis`, `side`) stay required.
 - Close-position audit records are asserted in tests via a capturing `Logger` layer (message `order.audit`, `action=closePosition` with symbol/qty/outcome annotations).
 - The paper smoke reads positions but never closes real ones — live partial-close verification needs a deliberately opened, filled position and lands in the M6 market-hours smoke.
+
+**Milestone 6 deltas from plan:**
+- **All** market-data reads (quote/trade/snapshot/bars) go direct-REST via `@effect/platform` HttpClient, not just bars — the SDK's entity remapping is undocumented, and one seam with raw documented wire shapes is stabler. Unknown symbols on the data API map to `AssetNotFound` (404).
+- Market-data prices are JSON **numbers** (Alpaca's data-API format) — informational, not transactional; trading-API money stays validated decimal strings.
+- Alpaca's assets endpoint returns the full universe unpaginated, so `GET /v1/assets` uses `search` (symbol prefix) + `tradable` filter + `limit`, returning `{ items, totalMatches }` — no page token (the plan's uniform pagination doesn't fit a non-paginated upstream).
+- `/metrics` added as a 21st route (unauthenticated, like `/health`), serving Prometheus text from Effect's metric registry: `alpaca_requests_total{op,outcome}`, `alpaca_request_duration_ms{op}` histogram, `orders_placed_total{trading_mode}`. Metrics count logical calls (retries folded in).
+- "Load sanity vs the 200 req/min budget" is covered analytically (≤4 attempts per read, mutations never retry, Retry-After honored — see README runbook) rather than by a load-test rig.
+- OpenAPI surface is locked by a path+method snapshot test; the emitted `openapi.json` stays a CI artifact.
 
 ## Tech stack & bootstrap
 

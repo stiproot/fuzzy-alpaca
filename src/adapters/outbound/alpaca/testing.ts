@@ -14,10 +14,20 @@ import {
   type CreateOrderRequest,
   type ReplaceOrderRequest,
 } from "../../../domain/schemas/order.js"
+import { CalendarDay } from "../../../domain/schemas/calendar.js"
+import {
+  BarFromWire,
+  LatestQuoteFromWire,
+  LatestTradeFromWire,
+  SnapshotFromWire,
+} from "../../../domain/schemas/market-data.js"
 import { PositionFromWire } from "../../../domain/schemas/position.js"
 import {
   AlpacaClient,
+  type CalendarParams,
   type ClosePositionParams,
+  type GetBarsParams,
+  type ListAssetsParams,
   type ListOrdersParams,
 } from "../../../ports/broker.js"
 
@@ -99,6 +109,44 @@ export const wirePositionFixture = {
   unrealized_intraday_plpc: "0.0032",
   change_today: "0.0032",
 }
+
+export const wireQuoteFixture = {
+  symbol: "AAPL",
+  quote: { t: "2026-07-02T19:59:59.999999Z", ax: "Q", ap: 189.65, as: 3, bx: "Q", bp: 189.6, bs: 2, c: ["R"], z: "C" },
+}
+
+export const wireTradeFixture = {
+  symbol: "AAPL",
+  trade: { t: "2026-07-02T19:59:58.123456Z", x: "Q", p: 189.62, s: 100, c: ["@"], i: 12345, z: "C" },
+}
+
+const wireBar = (day: number, close: number) => ({
+  t: `2026-06-${String(day).padStart(2, "0")}T04:00:00Z`,
+  o: close - 1,
+  h: close + 1,
+  l: close - 2,
+  c: close,
+  v: 1000000 + day,
+  n: 5000,
+  vw: close - 0.5,
+})
+
+// 5 daily bars for cursor tests
+export const wireBarsFixture = [wireBar(22, 185), wireBar(23, 186), wireBar(24, 187), wireBar(25, 188), wireBar(26, 189)]
+
+export const wireSnapshotFixture = {
+  symbol: "AAPL",
+  latestTrade: wireTradeFixture.trade,
+  latestQuote: wireQuoteFixture.quote,
+  minuteBar: wireBar(26, 189),
+  dailyBar: wireBar(26, 189),
+  prevDailyBar: wireBar(25, 188),
+}
+
+export const wireCalendarFixture = [
+  { date: "2026-07-06", open: "09:30", close: "16:00", session_open: "0400", session_close: "2000" },
+  { date: "2026-07-07", open: "09:30", close: "16:00", session_open: "0400", session_close: "2000" },
+]
 
 export const accountFixture: Account = Schema.decodeUnknownSync(AccountFromWire)(wireAccountFixture)
 export const clockFixture: Clock = Schema.decodeUnknownSync(ClockFromWire)(wireClockFixture)
@@ -350,6 +398,49 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
             ? Effect.succeed(Option.none())
             : Schema.decodeUnknown(AssetFromWire)(wire).pipe(Effect.orDie, Effect.map(Option.some))
         },
+
+        getLatestQuote: (symbol: string) =>
+          Schema.decodeUnknown(LatestQuoteFromWire)({ ...wireQuoteFixture, symbol }).pipe(
+            Effect.orDie,
+            Effect.map((wire) => ({ symbol: wire.symbol, ...wire.quote }))
+          ),
+
+        getLatestTrade: (symbol: string) =>
+          Schema.decodeUnknown(LatestTradeFromWire)({ ...wireTradeFixture, symbol }).pipe(
+            Effect.orDie,
+            Effect.map((wire) => ({ symbol: wire.symbol, ...wire.trade }))
+          ),
+
+        getSnapshot: (symbol: string) =>
+          Schema.decodeUnknown(SnapshotFromWire)({ ...wireSnapshotFixture, symbol }).pipe(
+            Effect.orDie
+          ),
+
+        // Emulates Alpaca's real token pagination: token is an offset cursor.
+        getBars: (symbol: string, params: GetBarsParams) =>
+          Effect.gen(function* () {
+            const offset = params.pageToken !== undefined ? Number(params.pageToken) : 0
+            const page = wireBarsFixture.slice(offset, offset + params.limit)
+            const next = offset + params.limit
+            const items = yield* Effect.forEach(page, (bar) =>
+              Schema.decodeUnknown(BarFromWire)(bar).pipe(Effect.orDie)
+            )
+            return {
+              symbol: symbol as never,
+              items,
+              ...(next < wireBarsFixture.length ? { nextPageToken: String(next) } : {}),
+            }
+          }),
+
+        getAssets: (_params: ListAssetsParams) =>
+          Effect.forEach(assets, (wire) =>
+            Schema.decodeUnknown(AssetFromWire)(wire).pipe(Effect.orDie)
+          ),
+
+        getCalendar: (_params: CalendarParams) =>
+          Effect.forEach(wireCalendarFixture, (wire) =>
+            Schema.decodeUnknown(CalendarDay)(wire).pipe(Effect.orDie)
+          ),
 
         getPositions: () =>
           Ref.get(positions).pipe(

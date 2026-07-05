@@ -1,5 +1,7 @@
+import { NodeHttpClient } from "@effect/platform-node"
 import { Effect, Layer, Option, Schema } from "effect"
 import { AlpacaClientLive } from "../src/adapters/outbound/alpaca/live.js"
+import { MarketDataService } from "../src/application/market-data/service.js"
 import { TradingService } from "../src/application/trading/service.js"
 import { AppConfig } from "../src/config.js"
 import { TickerSymbol } from "../src/domain/primitives.js"
@@ -25,6 +27,47 @@ const program = Effect.gen(function* () {
     buyingPower: account.buyingPower,
     equity: account.equity,
   })
+
+  // Market intelligence: asset → snapshot → quote → bars (token round-trip) → calendar
+  const marketData = yield* MarketDataService
+  const aapl = yield* Schema.decodeUnknown(TickerSymbol)("AAPL")
+
+  const asset = yield* marketData.getAsset(aapl)
+  yield* Effect.logInfo("asset", {
+    found: Option.isSome(asset),
+    tradable: Option.isSome(asset) ? asset.value.tradable : null,
+  })
+
+  const snapshot = yield* marketData.getSnapshot(aapl)
+  yield* Effect.logInfo("snapshot", {
+    hasQuote: Option.isSome(snapshot.latestQuote),
+    dailyClose: Option.map(snapshot.dailyBar, (b) => b.close),
+  })
+
+  const quote = yield* marketData.getQuote(aapl)
+  yield* Effect.logInfo("latest quote", { ask: quote.askPrice, bid: quote.bidPrice })
+
+  const bars1 = yield* marketData.getBars(aapl, { timeframe: "1Day", start: "2026-06-20", end: "2026-07-03", limit: 3 })
+  const bars2 =
+    bars1.nextPageToken !== undefined
+      ? yield* marketData.getBars(aapl, {
+          timeframe: "1Day",
+          start: "2026-06-20",
+          end: "2026-07-03",
+          limit: 3,
+          pageToken: bars1.nextPageToken,
+        })
+      : undefined
+  yield* Effect.logInfo("bars pagination", {
+    page1: bars1.items.length,
+    hadToken: bars1.nextPageToken !== undefined,
+    page2: bars2?.items.length ?? 0,
+    page1LastClose: bars1.items[bars1.items.length - 1]?.close,
+    page2FirstClose: bars2?.items[0]?.close,
+  })
+
+  const calendar = yield* marketData.getCalendar({ start: "2026-07-06", end: "2026-07-10" })
+  yield* Effect.logInfo("calendar", { days: calendar.map((d) => d.date) })
 
   // Positions: read-only against the live account (closing real positions is
   // reserved for the market-hours full smoke in milestone 6).
@@ -100,8 +143,10 @@ const program = Effect.gen(function* () {
 program.pipe(
   Effect.provide(
     TradingService.Default.pipe(
+      Layer.provideMerge(MarketDataService.Default),
       Layer.provideMerge(AlpacaClientLive),
-      Layer.provideMerge(AppConfig.Default)
+      Layer.provideMerge(AppConfig.Default),
+      Layer.provide(NodeHttpClient.layer)
     )
   ),
   Effect.runPromise

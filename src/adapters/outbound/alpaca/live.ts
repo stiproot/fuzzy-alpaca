@@ -1,9 +1,12 @@
 import AlpacaModule from "@alpacahq/alpaca-trade-api"
+import { HttpClient, HttpClientRequest } from "@effect/platform"
 import { Data, Duration, Effect, Layer, Option, ParseResult, Redacted, Schedule, Schema } from "effect"
 import { AppConfig } from "../../../config.js"
 import {
   AlpacaContractError,
   AlpacaTimeout,
+  AlpacaUnavailable,
+  AssetNotFound,
   DuplicateClientOrderId,
   OrderNotCancelable,
   OrderNotFound,
@@ -21,9 +24,26 @@ import {
   type CreateOrderRequest,
   type ReplaceOrderRequest,
 } from "../../../domain/schemas/order.js"
+import { CalendarDay } from "../../../domain/schemas/calendar.js"
+import {
+  BarsPageFromWire,
+  LatestQuoteFromWire,
+  LatestTradeFromWire,
+  SnapshotFromWire,
+  type BarsPage,
+  type Snapshot,
+} from "../../../domain/schemas/market-data.js"
 import { PositionFromWire } from "../../../domain/schemas/position.js"
-import { AlpacaClient, type ClosePositionParams, type ListOrdersParams } from "../../../ports/broker.js"
+import {
+  AlpacaClient,
+  type CalendarParams,
+  type ClosePositionParams,
+  type GetBarsParams,
+  type ListAssetsParams,
+  type ListOrdersParams,
+} from "../../../ports/broker.js"
 import { dataMessageOf, isBusinessError, mapSdkError, statusOf, type MappedAlpacaError } from "./errors-map.js"
+import { instrument } from "./metrics.js"
 
 // The only SDK surface we consume; responses are re-decoded through our own
 // schemas, so the SDK's loose types stop here.
@@ -40,6 +60,8 @@ interface AlpacaSdk {
   getAsset(symbol: string): Promise<unknown>
   getPositions(): Promise<unknown>
   getPosition(symbol: string): Promise<unknown>
+  getAssets(params: Record<string, unknown>): Promise<unknown>
+  getCalendar(params: Record<string, unknown>): Promise<unknown>
   // closePosition() in the SDK cannot pass qty/percentage, so partial closes
   // go through the SDK's public raw-request escape hatch.
   sendRequest(endpoint: string, queryParams: unknown, body: unknown, method: string): Promise<unknown>
@@ -91,20 +113,15 @@ const timeoutStage = (op: string) =>
     onTimeout: () => new AlpacaTimeout({ message: `Alpaca call ${op} timed out`, op }),
   })
 
-// Read/idempotent recipe: tryPromise → decode → timeout → retry → span.
-// `refine` maps a thrown SDK error to a precise domain error before the
-// generic table (e.g. 404 → OrderNotFound). Business errors on these paths
-// are contract violations → defects.
-export const alpacaCall = <A, I, R, E2 extends { readonly _tag: string } = never>(
+// Read/idempotent pipeline over any raw-JSON source (SDK promise or direct
+// REST): decode → timeout → retry → metrics → span. Business errors on read
+// paths are contract violations → defects.
+const alpacaReadPipeline = <A, I, R, E2 extends { readonly _tag: string }, R2>(
   op: string,
-  thunk: () => Promise<unknown>,
-  schema: Schema.Schema<A, I, R>,
-  refine?: (thrown: unknown) => E2 | undefined
-): Effect.Effect<A, AlpacaError | E2, R> =>
-  Effect.tryPromise({
-    try: thunk,
-    catch: (thrown): MappedAlpacaError | E2 => refine?.(thrown) ?? mapSdkError(op)(thrown),
-  }).pipe(
+  source: Effect.Effect<unknown, MappedAlpacaError | E2, R2>,
+  schema: Schema.Schema<A, I, R>
+): Effect.Effect<A, AlpacaError | E2, R | R2> =>
+  source.pipe(
     Effect.flatMap(decodeStage(op, schema)),
     timeoutStage(op),
     Effect.tapError(pauseForRetryAfter),
@@ -113,12 +130,31 @@ export const alpacaCall = <A, I, R, E2 extends { readonly _tag: string } = never
       (e) => isBusinessError(e as MappedAlpacaError),
       (e) => Effect.die(e)
     ),
+    instrument(op),
     Effect.withSpan(`alpaca.${op}`)
-  ) as Effect.Effect<A, AlpacaError | E2, R>
+  ) as Effect.Effect<A, AlpacaError | E2, R | R2>
 
-// Mutation recipe for createOrder: NO retry stage — after a timeout or
-// network failure the order may have reached Alpaca, so a blind retry could
-// double-submit. Business errors are legitimate typed failures here.
+// `refine` maps a thrown SDK error to a precise domain error before the
+// generic table (e.g. 404 → OrderNotFound).
+export const alpacaCall = <A, I, R, E2 extends { readonly _tag: string } = never>(
+  op: string,
+  thunk: () => Promise<unknown>,
+  schema: Schema.Schema<A, I, R>,
+  refine?: (thrown: unknown) => E2 | undefined
+): Effect.Effect<A, AlpacaError | E2, R> =>
+  alpacaReadPipeline(
+    op,
+    Effect.tryPromise({
+      try: thunk,
+      catch: (thrown): MappedAlpacaError | E2 => refine?.(thrown) ?? mapSdkError(op)(thrown),
+    }),
+    schema
+  )
+
+// Mutation recipe for createOrder/replaceOrder/closePosition: NO retry stage —
+// after a timeout or network failure the mutation may have reached Alpaca, so
+// a blind retry could double-submit. Business errors are legitimate typed
+// failures here.
 export const alpacaMutationCall = <A, I, R, E2 extends { readonly _tag: string } = never>(
   op: string,
   thunk: () => Promise<unknown>,
@@ -131,6 +167,7 @@ export const alpacaMutationCall = <A, I, R, E2 extends { readonly _tag: string }
   }).pipe(
     Effect.flatMap(decodeStage(op, schema)),
     timeoutStage(op),
+    instrument(op),
     Effect.withSpan(`alpaca.${op}`)
   )
 
@@ -164,16 +201,74 @@ const toWireOrder = (p: CreateOrderRequest): Record<string, unknown> => ({
 const isDuplicateClientOrderId = (thrown: unknown): boolean =>
   statusOf(thrown) === 422 && /client.?order.?id/i.test(dataMessageOf(thrown) ?? "")
 
+const DATA_BASE_URL = "https://data.alpaca.markets/v2/stocks"
+
 export const AlpacaClientLive = Layer.effect(
   AlpacaClient,
   Effect.gen(function* () {
     const config = yield* AppConfig
+    const http = yield* HttpClient.HttpClient
     const sdk = new Alpaca({
       keyId: Redacted.value(config.alpacaKeyId),
       secretKey: Redacted.value(config.alpacaSecretKey),
       paper: config.tradingMode === "paper",
       feed: config.feed,
     })
+
+    // Direct REST against the data API: the SDK's bars iterator swallows
+    // next_page_token, and its entity remapping is undocumented — raw wire
+    // shapes + our schemas are the stabler contract. Same pipeline as SDK
+    // calls; unknown symbols become AssetNotFound.
+    const restGetRaw = (
+      op: string,
+      url: string,
+      params: Record<string, string | number | undefined>
+    ): Effect.Effect<unknown, MappedAlpacaError | AssetNotFound> =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const request = HttpClientRequest.get(url).pipe(
+            HttpClientRequest.setHeaders({
+              "APCA-API-KEY-ID": Redacted.value(config.alpacaKeyId),
+              "APCA-API-SECRET-KEY": Redacted.value(config.alpacaSecretKey),
+            }),
+            HttpClientRequest.setUrlParams(
+              Object.fromEntries(
+                Object.entries(params)
+                  .filter(([, value]) => value !== undefined)
+                  .map(([key, value]) => [key, String(value)])
+              )
+            )
+          )
+          const response = yield* http.execute(request).pipe(
+            Effect.mapError(
+              (error) =>
+                new AlpacaUnavailable({ message: `Alpaca unreachable during ${op}: ${error.message}` })
+            )
+          )
+          if (response.status === 404) {
+            return yield* Effect.fail(
+              new AssetNotFound({ message: `no data for symbol (${op}): not found at Alpaca` })
+            )
+          }
+          if (response.status >= 400) {
+            const data = yield* response.json.pipe(Effect.orElseSucceed(() => ({})))
+            return yield* Effect.fail(
+              mapSdkError(op)({
+                response: {
+                  status: response.status,
+                  data,
+                  headers: { "retry-after": response.headers["retry-after"] },
+                },
+              })
+            )
+          }
+          return yield* response.json.pipe(
+            Effect.mapError(
+              () => new AlpacaUnavailable({ message: `Alpaca returned unparseable JSON during ${op}` })
+            )
+          )
+        })
+      )
 
     return {
       getAccount: () => alpacaCall("getAccount", () => sdk.getAccount(), AccountFromWire),
@@ -266,6 +361,70 @@ export const AlpacaClientLive = Layer.effect(
 
       getPositions: () =>
         alpacaCall("getPositions", () => sdk.getPositions(), Schema.Array(PositionFromWire)),
+
+      getLatestQuote: (symbol: TickerSymbol) =>
+        alpacaReadPipeline(
+          "getLatestQuote",
+          restGetRaw("getLatestQuote", `${DATA_BASE_URL}/${symbol}/quotes/latest`, {
+            feed: config.feed,
+          }),
+          LatestQuoteFromWire
+        ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.quote }))),
+
+      getLatestTrade: (symbol: TickerSymbol) =>
+        alpacaReadPipeline(
+          "getLatestTrade",
+          restGetRaw("getLatestTrade", `${DATA_BASE_URL}/${symbol}/trades/latest`, {
+            feed: config.feed,
+          }),
+          LatestTradeFromWire
+        ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.trade }))),
+
+      getSnapshot: (symbol: TickerSymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
+        alpacaReadPipeline(
+          "getSnapshot",
+          restGetRaw("getSnapshot", `${DATA_BASE_URL}/${symbol}/snapshot`, { feed: config.feed }),
+          SnapshotFromWire
+        ),
+
+      getBars: (symbol: TickerSymbol, params: GetBarsParams): Effect.Effect<BarsPage, AlpacaError | AssetNotFound> =>
+        alpacaReadPipeline(
+          "getBars",
+          restGetRaw("getBars", `${DATA_BASE_URL}/${symbol}/bars`, {
+            timeframe: params.timeframe,
+            start: params.start,
+            end: params.end,
+            limit: params.limit,
+            adjustment: params.adjustment,
+            page_token: params.pageToken,
+            feed: config.feed,
+          }),
+          BarsPageFromWire
+        ).pipe(
+          Effect.map((wire) => ({
+            symbol: wire.symbol,
+            items: Option.getOrElse(wire.bars, () => []),
+            ...(Option.isSome(wire.nextPageToken) ? { nextPageToken: wire.nextPageToken.value } : {}),
+          }))
+        ),
+
+      getAssets: (params: ListAssetsParams) =>
+        alpacaCall(
+          "getAssets",
+          () => sdk.getAssets({ status: params.status ?? "active" }),
+          Schema.Array(AssetFromWire)
+        ),
+
+      getCalendar: (params: CalendarParams) =>
+        alpacaCall(
+          "getCalendar",
+          () =>
+            sdk.getCalendar({
+              ...(params.start !== undefined ? { start: params.start } : {}),
+              ...(params.end !== undefined ? { end: params.end } : {}),
+            }),
+          Schema.Array(CalendarDay)
+        ),
 
       getPosition: (symbol: TickerSymbol) =>
         alpacaOptionalCall("getPosition", () => sdk.getPosition(symbol), PositionFromWire),

@@ -13,11 +13,32 @@ import type { Account } from "../domain/schemas/account.js"
 import type { Asset } from "../domain/schemas/asset.js"
 import type { Clock } from "../domain/schemas/clock.js"
 import type { CreateOrderRequest, Order, ReplaceOrderRequest } from "../domain/schemas/order.js"
+import type { AssetNotFound } from "../domain/errors.js"
+import type { CalendarDay } from "../domain/schemas/calendar.js"
+import type { BarsPage, Quote, Snapshot, Trade } from "../domain/schemas/market-data.js"
 import type { Position } from "../domain/schemas/position.js"
 
 export interface ClosePositionParams {
   readonly qty?: string | undefined
   readonly percentage?: string | undefined
+}
+
+export interface GetBarsParams {
+  readonly timeframe: string
+  readonly start?: string | undefined
+  readonly end?: string | undefined
+  readonly limit: number
+  readonly adjustment?: string | undefined
+  readonly pageToken?: string | undefined
+}
+
+export interface ListAssetsParams {
+  readonly status?: "active" | "inactive" | undefined
+}
+
+export interface CalendarParams {
+  readonly start?: string | undefined
+  readonly end?: string | undefined
 }
 
 export type CreateOrderError =
@@ -83,5 +104,23 @@ export class AlpacaClient extends Context.Tag("AlpacaClient")<
       Order,
       AlpacaError | PositionNotFound | InsufficientBuyingPower | PdtRuleViolation
     >
+    readonly getLatestQuote: (
+      symbol: TickerSymbol
+    ) => Effect.Effect<Quote, AlpacaError | AssetNotFound>
+    readonly getLatestTrade: (
+      symbol: TickerSymbol
+    ) => Effect.Effect<Trade, AlpacaError | AssetNotFound>
+    readonly getSnapshot: (
+      symbol: TickerSymbol
+    ) => Effect.Effect<Snapshot, AlpacaError | AssetNotFound>
+    // Direct REST underneath — carries Alpaca's real next_page_token.
+    readonly getBars: (
+      symbol: TickerSymbol,
+      params: GetBarsParams
+    ) => Effect.Effect<BarsPage, AlpacaError | AssetNotFound>
+    readonly getAssets: (params: ListAssetsParams) => Effect.Effect<ReadonlyArray<Asset>, AlpacaError>
+    readonly getCalendar: (
+      params: CalendarParams
+    ) => Effect.Effect<ReadonlyArray<CalendarDay>, AlpacaError>
   }
 >() {}

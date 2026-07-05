@@ -1,8 +1,11 @@
 import { HttpApiBuilder, HttpApiSwagger } from "@effect/platform"
 import { Layer } from "effect"
+import { MarketDataService } from "../../../application/market-data/service.js"
 import { TradingService } from "../../../application/trading/service.js"
 import { AppConfig } from "../../../config.js"
 import { Api } from "./api.js"
+import { AssetsHandlers } from "./handlers/assets.js"
+import { MarketDataHandlers } from "./handlers/marketData.js"
 import { OrdersHandlers } from "./handlers/orders.js"
 import { PositionsHandlers } from "./handlers/positions.js"
 import { SystemHandlers } from "./handlers/system.js"
@@ -15,7 +18,10 @@ export const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(SystemHandlers),
   Layer.provide(OrdersHandlers),
   Layer.provide(PositionsHandlers),
+  Layer.provide(MarketDataHandlers),
+  Layer.provide(AssetsHandlers),
   Layer.provide(TradingService.Default),
+  Layer.provide(MarketDataService.Default),
   Layer.provide(AuthorizationLive),
   Layer.provide(AppConfig.Default)
 )
