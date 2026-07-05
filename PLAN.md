@@ -16,7 +16,7 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 | 2. AlpacaClient + account/clock | ✅ done (2026-07-05) | Verified against live paper account |
 | 3. Order write path | ✅ done (2026-07-05) | Orchestrator can trade. Live paper verify: place → replay → cancel |
 | 4. Order read + replace | ✅ done (2026-07-05) | Live replace pending market hours (Alpaca rejects replace of `accepted` orders while closed) — rolls into M6 smoke |
-| 5. Positions | ⬜ not started | |
+| 5. Positions | ✅ done (2026-07-05) | Live partial-close verification deferred to M6 market-hours smoke (needs a filled position; smoke stays read-only on real positions) |
 | 6. Market intelligence + ops hardening | ⬜ not started | |
 
 **Milestone 1 deltas from plan:**
@@ -48,6 +48,12 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 - List defaults mirror Alpaca: `status=open`, `direction=desc`, `limit=100` (ours).
 - Replace of a non-replaceable order reuses `OrderNotCancelable` (409) rather than adding a new error code; replace is a no-retry mutation like create (no reconciliation — the agent inspects via GET on ambiguity).
 - `GET /v1/orders/:orderId` takes a plain string path param (a clientOrderId isn't a UUID); a non-UUID without `byClientOrderId=true` gets a 400 whose message points at the flag.
+
+**Milestone 5 deltas from plan:**
+- The v3 SDK's `closePosition(symbol)` cannot pass `qty`/`percentage`, so partial closes go through the SDK's public `sendRequest` escape hatch (still inside the quarantined adapter, still decoded through `OrderFromWire`).
+- Position price/P&L wire fields decode as `OptionFromNullOr` (nullable in edge states — fresh positions, halted symbols); core fields (`qty`, `avgEntryPrice`, `costBasis`, `side`) stay required.
+- Close-position audit records are asserted in tests via a capturing `Logger` layer (message `order.audit`, `action=closePosition` with symbol/qty/outcome annotations).
+- The paper smoke reads positions but never closes real ones — live partial-close verification needs a deliberately opened, filled position and lands in the M6 market-hours smoke.
 
 ## Tech stack & bootstrap
 

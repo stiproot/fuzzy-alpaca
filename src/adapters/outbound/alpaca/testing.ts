@@ -3,6 +3,7 @@ import {
   DuplicateClientOrderId,
   OrderNotCancelable,
   OrderNotFound,
+  PositionNotFound,
   type AlpacaError,
 } from "../../../domain/errors.js"
 import { AccountFromWire, type Account } from "../../../domain/schemas/account.js"
@@ -13,7 +14,12 @@ import {
   type CreateOrderRequest,
   type ReplaceOrderRequest,
 } from "../../../domain/schemas/order.js"
-import { AlpacaClient, type ListOrdersParams } from "../../../ports/broker.js"
+import { PositionFromWire } from "../../../domain/schemas/position.js"
+import {
+  AlpacaClient,
+  type ClosePositionParams,
+  type ListOrdersParams,
+} from "../../../ports/broker.js"
 
 // Fixtures are captured real Alpaca paper-account JSON (sanitized), decoded
 // through the same wire schemas production uses.
@@ -74,6 +80,26 @@ const wireAssetDefaults = [
   },
 ]
 
+export const wirePositionFixture = {
+  asset_id: "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
+  symbol: "AAPL",
+  exchange: "NASDAQ",
+  asset_class: "us_equity",
+  side: "long",
+  qty: "10",
+  qty_available: "10",
+  avg_entry_price: "150.00",
+  cost_basis: "1500.00",
+  market_value: "1550.00",
+  current_price: "155.00",
+  lastday_price: "154.50",
+  unrealized_pl: "50.00",
+  unrealized_plpc: "0.0333",
+  unrealized_intraday_pl: "5.00",
+  unrealized_intraday_plpc: "0.0032",
+  change_today: "0.0032",
+}
+
 export const accountFixture: Account = Schema.decodeUnknownSync(AccountFromWire)(wireAccountFixture)
 export const clockFixture: Clock = Schema.decodeUnknownSync(ClockFromWire)(wireClockFixture)
 
@@ -126,6 +152,8 @@ export interface AlpacaClientTestOptions {
   readonly failCreateAfterSubmitOnce?: AlpacaError
   /** extra/overriding wire assets keyed by symbol */
   readonly assets?: ReadonlyArray<Record<string, unknown>>
+  /** initial wire positions (default: one AAPL long of 10 shares) */
+  readonly positions?: ReadonlyArray<Record<string, unknown>>
 }
 
 // In-memory broker implementing the port over a Ref'd wire-shaped order book;
@@ -135,6 +163,9 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
     AlpacaClient,
     Effect.gen(function* () {
       const orders = yield* Ref.make<ReadonlyArray<WireOrder>>([])
+      const positions = yield* Ref.make<ReadonlyArray<Record<string, unknown>>>(
+        options.positions ?? [wirePositionFixture]
+      )
       const submitFailurePending = yield* Ref.make(options.failCreateAfterSubmitOnce !== undefined)
       let orderSeq = 0
 
@@ -319,6 +350,90 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
             ? Effect.succeed(Option.none())
             : Schema.decodeUnknown(AssetFromWire)(wire).pipe(Effect.orDie, Effect.map(Option.some))
         },
+
+        getPositions: () =>
+          Ref.get(positions).pipe(
+            Effect.flatMap((all) =>
+              Effect.forEach(all, (wire) =>
+                Schema.decodeUnknown(PositionFromWire)(wire).pipe(Effect.orDie)
+              )
+            )
+          ),
+
+        getPosition: (symbol: string) =>
+          Ref.get(positions).pipe(
+            Effect.flatMap((all) => {
+              const wire = all.find((p) => p["symbol"] === symbol)
+              return wire === undefined
+                ? Effect.succeed(Option.none())
+                : Schema.decodeUnknown(PositionFromWire)(wire).pipe(
+                    Effect.orDie,
+                    Effect.map(Option.some)
+                  )
+            })
+          ),
+
+        closePosition: (symbol: string, params: ClosePositionParams) =>
+          Ref.get(positions).pipe(
+            Effect.flatMap((all) => {
+              const wire = all.find((p) => p["symbol"] === symbol)
+              if (wire === undefined) {
+                return Effect.fail(
+                  new PositionNotFound({ message: `no open position in ${symbol}` })
+                )
+              }
+              const held = Number(wire["qty"] as string)
+              const closeQty =
+                params.qty !== undefined
+                  ? Number(params.qty)
+                  : params.percentage !== undefined
+                    ? (held * Number(params.percentage)) / 100
+                    : held
+              const remaining = held - closeQty
+
+              orderSeq += 1
+              const id = `00000000-0000-4000-8000-${String(orderSeq).padStart(12, "0")}`
+              const timestamp = seqTimestamp(orderSeq)
+              const liquidation: WireOrder = {
+                id,
+                client_order_id: `liquidation-${orderSeq}`,
+                symbol,
+                side: wire["side"] === "long" ? "sell" : "buy",
+                type: "market",
+                time_in_force: "day",
+                status: "accepted",
+                qty: String(closeQty),
+                notional: null,
+                filled_qty: "0",
+                filled_avg_price: null,
+                limit_price: null,
+                stop_price: null,
+                extended_hours: false,
+                created_at: timestamp,
+                submitted_at: timestamp,
+                filled_at: null,
+                canceled_at: null,
+                expired_at: null,
+                failed_at: null,
+                replaces: null,
+                replaced_by: null,
+              }
+              return Ref.update(orders, (current) => [...current, liquidation]).pipe(
+                Effect.andThen(
+                  Ref.update(positions, (current) =>
+                    remaining <= 0
+                      ? current.filter((p) => p["symbol"] !== symbol)
+                      : current.map((p) =>
+                          p["symbol"] === symbol
+                            ? { ...p, qty: String(remaining), qty_available: String(remaining) }
+                            : p
+                        )
+                  )
+                ),
+                Effect.andThen(decodeOrder(liquidation).pipe(Effect.orDie))
+              )
+            })
+          ),
       }
     })
   )

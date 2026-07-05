@@ -6,12 +6,19 @@ import type {
   OrderNotCancelable,
   OrderNotFound,
   PdtRuleViolation,
+  PositionNotFound,
 } from "../domain/errors.js"
 import type { ClientOrderId, OrderId, TickerSymbol } from "../domain/primitives.js"
 import type { Account } from "../domain/schemas/account.js"
 import type { Asset } from "../domain/schemas/asset.js"
 import type { Clock } from "../domain/schemas/clock.js"
 import type { CreateOrderRequest, Order, ReplaceOrderRequest } from "../domain/schemas/order.js"
+import type { Position } from "../domain/schemas/position.js"
+
+export interface ClosePositionParams {
+  readonly qty?: string | undefined
+  readonly percentage?: string | undefined
+}
 
 export type CreateOrderError =
   | AlpacaError
@@ -64,5 +71,17 @@ export class AlpacaClient extends Context.Tag("AlpacaClient")<
       AlpacaError
     >
     readonly getAsset: (symbol: TickerSymbol) => Effect.Effect<Option.Option<Asset>, AlpacaError>
+    readonly getPositions: () => Effect.Effect<ReadonlyArray<Position>, AlpacaError>
+    readonly getPosition: (
+      symbol: TickerSymbol
+    ) => Effect.Effect<Option.Option<Position>, AlpacaError>
+    // Mutation (submits a liquidation order): not blind-retried by the adapter.
+    readonly closePosition: (
+      symbol: TickerSymbol,
+      params: ClosePositionParams
+    ) => Effect.Effect<
+      Order,
+      AlpacaError | PositionNotFound | InsufficientBuyingPower | PdtRuleViolation
+    >
   }
 >() {}

@@ -1,7 +1,8 @@
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Option, Schema } from "effect"
 import { AlpacaClientLive } from "../src/adapters/outbound/alpaca/live.js"
 import { TradingService } from "../src/application/trading/service.js"
 import { AppConfig } from "../src/config.js"
+import { TickerSymbol } from "../src/domain/primitives.js"
 import { CreateOrderRequest, ReplaceOrderRequest } from "../src/domain/schemas/order.js"
 import { AlpacaClient } from "../src/ports/broker.js"
 
@@ -24,6 +25,16 @@ const program = Effect.gen(function* () {
     buyingPower: account.buyingPower,
     equity: account.equity,
   })
+
+  // Positions: read-only against the live account (closing real positions is
+  // reserved for the market-hours full smoke in milestone 6).
+  const positions = yield* trading.listPositions()
+  yield* Effect.logInfo("positions", {
+    count: positions.length,
+    symbols: positions.map((p) => p.symbol),
+  })
+  const noPosition = yield* trading.getPosition(yield* Schema.decodeUnknown(TickerSymbol)("ZZZZ"))
+  yield* Effect.logInfo("unknown position lookup", { isNone: Option.isNone(noPosition) })
 
   // Order lifecycle: limit buy far below market so it can never fill,
   // then idempotent replay, then cancel.

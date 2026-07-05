@@ -7,6 +7,7 @@ import {
   DuplicateClientOrderId,
   OrderNotCancelable,
   OrderNotFound,
+  PositionNotFound,
   isRetryableAlpacaError,
   type AlpacaError,
 } from "../../../domain/errors.js"
@@ -20,7 +21,8 @@ import {
   type CreateOrderRequest,
   type ReplaceOrderRequest,
 } from "../../../domain/schemas/order.js"
-import { AlpacaClient, type ListOrdersParams } from "../../../ports/broker.js"
+import { PositionFromWire } from "../../../domain/schemas/position.js"
+import { AlpacaClient, type ClosePositionParams, type ListOrdersParams } from "../../../ports/broker.js"
 import { dataMessageOf, isBusinessError, mapSdkError, statusOf, type MappedAlpacaError } from "./errors-map.js"
 
 // The only SDK surface we consume; responses are re-decoded through our own
@@ -36,6 +38,11 @@ interface AlpacaSdk {
   cancelOrder(id: string): Promise<unknown>
   cancelAllOrders(): Promise<unknown>
   getAsset(symbol: string): Promise<unknown>
+  getPositions(): Promise<unknown>
+  getPosition(symbol: string): Promise<unknown>
+  // closePosition() in the SDK cannot pass qty/percentage, so partial closes
+  // go through the SDK's public raw-request escape hatch.
+  sendRequest(endpoint: string, queryParams: unknown, body: unknown, method: string): Promise<unknown>
 }
 type AlpacaCtor = new (config: {
   keyId: string
@@ -256,6 +263,33 @@ export const AlpacaClientLive = Layer.effect(
 
       getAsset: (symbol: TickerSymbol) =>
         alpacaOptionalCall("getAsset", () => sdk.getAsset(symbol), AssetFromWire),
+
+      getPositions: () =>
+        alpacaCall("getPositions", () => sdk.getPositions(), Schema.Array(PositionFromWire)),
+
+      getPosition: (symbol: TickerSymbol) =>
+        alpacaOptionalCall("getPosition", () => sdk.getPosition(symbol), PositionFromWire),
+
+      // Returns the liquidation order Alpaca creates for the close.
+      closePosition: (symbol: TickerSymbol, params: ClosePositionParams) =>
+        alpacaMutationCall(
+          "closePosition",
+          () =>
+            sdk.sendRequest(
+              `/positions/${symbol}`,
+              {
+                ...(params.qty !== undefined ? { qty: params.qty } : {}),
+                ...(params.percentage !== undefined ? { percentage: params.percentage } : {}),
+              },
+              null,
+              "DELETE"
+            ),
+          OrderFromWire,
+          (thrown) =>
+            statusOf(thrown) === 404
+              ? new PositionNotFound({ message: `no open position in ${symbol}` })
+              : undefined
+        ),
     }
   })
 )

@@ -11,6 +11,7 @@ import {
   type AlpacaError,
   type InsufficientBuyingPower,
   type PdtRuleViolation,
+  type PositionNotFound,
 } from "../../domain/errors.js"
 import { ClientOrderId, OrderId, type TickerSymbol, type TradingMode } from "../../domain/primitives.js"
 import type {
@@ -21,8 +22,13 @@ import type {
   OrderResponse,
   ReplaceOrderRequest,
 } from "../../domain/schemas/order.js"
+import type { ClosePositionQuery, Position } from "../../domain/schemas/position.js"
 import { AppConfig } from "../../config.js"
-import { AlpacaClient, type ListOrdersParams } from "../../ports/broker.js"
+import {
+  AlpacaClient,
+  type ClosePositionParams,
+  type ListOrdersParams,
+} from "../../ports/broker.js"
 import { decodeOrdersPageToken, encodeOrdersPageToken } from "./page-token.js"
 
 export type PlaceOrderError =
@@ -317,12 +323,65 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
         Effect.withSpan("trading.replaceOrder")
       )
 
+    const isPositiveDecimal = (s: string) => /^\d+(\.\d+)?$/.test(s) && Number(s) > 0
+
+    const closePosition = (
+      symbol: TickerSymbol,
+      query: ClosePositionQuery
+    ): Effect.Effect<
+      OrderResponse,
+      | AlpacaError
+      | PositionNotFound
+      | InsufficientBuyingPower
+      | PdtRuleViolation
+    > =>
+      Effect.gen(function* () {
+        if (query.qty !== undefined && query.percentage !== undefined) {
+          return yield* Effect.fail(
+            new ValidationError({ message: "qty and percentage are mutually exclusive" })
+          )
+        }
+        if (query.qty !== undefined && !isPositiveDecimal(query.qty)) {
+          return yield* Effect.fail(
+            new ValidationError({ message: `qty must be a positive decimal (got ${query.qty})` })
+          )
+        }
+        if (
+          query.percentage !== undefined &&
+          (!isPositiveDecimal(query.percentage) || Number(query.percentage) > 100)
+        ) {
+          return yield* Effect.fail(
+            new ValidationError({ message: `percentage must be in (0, 100] (got ${query.percentage})` })
+          )
+        }
+        const params: ClosePositionParams = { qty: query.qty, percentage: query.percentage }
+        const liquidation = yield* broker.closePosition(symbol, params)
+        return withMeta(liquidation, false)
+      }).pipe(
+        Effect.tap((response) =>
+          audit("closePosition", {
+            symbol,
+            qty: query.qty ?? query.percentage ?? "full",
+            outcome: response.orderId,
+          })
+        ),
+        Effect.tapError((error) =>
+          audit("closePosition.failed", { symbol, outcome: error._tag })
+        ),
+        Effect.withSpan("trading.closePosition")
+      )
+
     return {
       getAccount: () => broker.getAccount(),
       getClock: () => broker.getClock(),
       listOrders,
       getOrderFlexible,
       replaceOrder,
+      listPositions: (): Effect.Effect<ReadonlyArray<Position>, AlpacaError> =>
+        broker.getPositions(),
+      getPosition: (symbol: TickerSymbol): Effect.Effect<Option.Option<Position>, AlpacaError> =>
+        broker.getPosition(symbol),
+      closePosition,
       // Fast health probe: 2s budget, never fails — degraded on any problem.
       connectivity: (): Effect.Effect<"ok" | "degraded"> =>
         broker.getClock().pipe(

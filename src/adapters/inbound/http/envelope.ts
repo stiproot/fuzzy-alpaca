@@ -109,6 +109,11 @@ export const OrderNotFoundT = transport(E.OrderNotFound, "OrderNotFound", {
   retryable: false,
 })
 
+export const PositionNotFoundT = transport(E.PositionNotFound, "PositionNotFound", {
+  status: 404,
+  retryable: false,
+})
+
 export const OrderNotCancelableT = transport(E.OrderNotCancelable, "OrderNotCancelable", {
   status: 409,
   retryable: false,

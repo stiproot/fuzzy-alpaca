@@ -1,10 +1,12 @@
 import { HttpApi, OpenApi } from "@effect/platform"
 import { ordersGroup } from "./groups/orders.js"
+import { positionsGroup } from "./groups/positions.js"
 import { systemGroup } from "./groups/system.js"
 
 export class Api extends HttpApi.make("fuzzy-alpaca-core")
   .add(systemGroup)
   .add(ordersGroup)
+  .add(positionsGroup)
   .annotate(OpenApi.Title, "fuzzy-alpaca-core")
   .annotate(
     OpenApi.Description,
