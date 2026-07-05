@@ -3,15 +3,10 @@ import { Effect, Layer, Redacted } from "effect"
 import { createHash, timingSafeEqual } from "node:crypto"
 import { AppConfig } from "../../../../config.js"
 import { Unauthorized } from "../../../../domain/errors.js"
-import { transport } from "../envelope.js"
-
-export const UnauthorizedTransport = transport(Unauthorized, "Unauthorized", {
-  status: 401,
-  retryable: false,
-})
+import { UnauthorizedT } from "../envelope.js"
 
 export class Authorization extends HttpApiMiddleware.Tag<Authorization>()("Authorization", {
-  failure: UnauthorizedTransport,
+  failure: UnauthorizedT,
   security: {
     apiKey: HttpApiSecurity.apiKey({ in: "header", key: "x-api-key" }),
   },

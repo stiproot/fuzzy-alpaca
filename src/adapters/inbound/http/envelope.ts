@@ -1,5 +1,6 @@
 import { HttpApiSchema } from "@effect/platform"
 import { Schema } from "effect"
+import * as E from "../../../domain/errors.js"
 
 // Wire contract for every non-2xx response:
 //   { error: { code, message, retryable, requestId?, details? } }
@@ -18,16 +19,87 @@ const envelopeStruct = <Tag extends string>(code: Tag) =>
     }),
   })
 
-// Works for domain errors whose only wire-relevant field is `message`.
-// Errors with extra payload (retryAfterSeconds, ...) get dedicated transports
-// when their endpoints land.
+// Extra error payload beyond `message` (retryAfterSeconds, op, ...) rides in
+// the envelope's `details` via the encodeDetails/decodeDetails codec pair.
 export const transport = <Tag extends string, Self extends { readonly _tag: Tag; readonly message: string }>(
-  ErrorClass: Schema.Schema<Self, { readonly _tag: Tag; readonly message: string }>,
+  ErrorClass: Schema.Schema<Self, any>,
   tag: Tag,
-  opts: { readonly status: number; readonly retryable: boolean }
+  opts: {
+    readonly status: number
+    readonly retryable: boolean
+    readonly encodeDetails?: (e: Self) => unknown
+    readonly decodeDetails?: (details: unknown) => Record<string, unknown>
+  }
 ) =>
   Schema.transform(envelopeStruct(tag), ErrorClass, {
     strict: false,
-    decode: (env) => ({ _tag: tag, message: env.error.message }),
-    encode: (e) => ({ error: { code: tag, message: e.message, retryable: opts.retryable } }),
+    decode: (env) => ({
+      _tag: tag,
+      message: env.error.message,
+      ...(opts.decodeDetails ? opts.decodeDetails(env.error.details) : {}),
+    }),
+    encode: (e) => {
+      const details = opts.encodeDetails?.(e)
+      return {
+        error: {
+          code: tag,
+          message: e.message,
+          retryable: opts.retryable,
+          ...(details !== undefined ? { details } : {}),
+        },
+      }
+    },
   }).annotations(HttpApiSchema.annotations({ status: opts.status }))
+
+const detailsRecord = (details: unknown): Record<string, unknown> =>
+  typeof details === "object" && details !== null ? (details as Record<string, unknown>) : {}
+
+export const ValidationErrorT = transport(E.ValidationError, "ValidationError", {
+  status: 400,
+  retryable: false,
+  encodeDetails: (e) => e.details,
+  decodeDetails: (d) => (d === undefined ? {} : { details: d }),
+})
+
+export const RateLimitedT = transport(E.AlpacaRateLimited, "AlpacaRateLimited", {
+  status: 429,
+  retryable: true,
+  encodeDetails: (e) =>
+    e.retryAfterSeconds !== undefined ? { retryAfterSeconds: e.retryAfterSeconds } : undefined,
+  decodeDetails: (d) => {
+    const r = detailsRecord(d)
+    return typeof r["retryAfterSeconds"] === "number" ? { retryAfterSeconds: r["retryAfterSeconds"] } : {}
+  },
+})
+
+export const UnavailableT = transport(E.AlpacaUnavailable, "AlpacaUnavailable", {
+  status: 503,
+  retryable: true,
+})
+
+export const TimeoutT = transport(E.AlpacaTimeout, "AlpacaTimeout", {
+  status: 503,
+  retryable: true,
+  encodeDetails: (e) => ({ op: e.op }),
+  decodeDetails: (d) => ({ op: String(detailsRecord(d)["op"] ?? "unknown") }),
+})
+
+export const ContractErrorT = transport(E.AlpacaContractError, "AlpacaContractError", {
+  status: 500,
+  retryable: false,
+  encodeDetails: (e) => ({ op: e.op, parseError: e.parseError }),
+  decodeDetails: (d) => {
+    const r = detailsRecord(d)
+    return { op: String(r["op"] ?? "unknown"), parseError: String(r["parseError"] ?? "") }
+  },
+})
+
+export const InternalErrorT = transport(E.InternalError, "InternalError", {
+  status: 500,
+  retryable: false,
+})
+
+export const UnauthorizedT = transport(E.Unauthorized, "Unauthorized", {
+  status: 401,
+  retryable: false,
+})

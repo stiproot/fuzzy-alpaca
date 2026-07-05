@@ -78,3 +78,17 @@ export class AlpacaContractError extends Schema.TaggedError<AlpacaContractError>
 export class InternalError extends Schema.TaggedError<InternalError>()("InternalError", {
   message: Schema.String,
 }) {}
+
+// The transport-level failures any Alpaca-backed operation can produce.
+// Business errors (InsufficientBuyingPower, ...) are added per-method by the
+// operations that can actually raise them.
+export type AlpacaError =
+  | AlpacaRateLimited
+  | AlpacaUnavailable
+  | AlpacaTimeout
+  | AlpacaContractError
+  | ValidationError
+  | InternalError
+
+export const isRetryableAlpacaError = (e: AlpacaError): boolean =>
+  e._tag === "AlpacaRateLimited" || e._tag === "AlpacaUnavailable" || e._tag === "AlpacaTimeout"

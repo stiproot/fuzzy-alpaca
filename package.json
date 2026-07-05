@@ -9,9 +9,15 @@
     "start": "tsx --env-file-if-exists=.env src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "openapi": "tsx scripts/emit-openapi.ts"
+    "lint": "eslint .",
+    "openapi": "tsx scripts/emit-openapi.ts",
+    "smoke": "tsx --env-file=.env scripts/smoke.ts"
+  },
+  "overrides": {
+    "axios": "^1.13.0"
   },
   "dependencies": {
+    "@alpacahq/alpaca-trade-api": "3.1.3",
     "@effect/platform": "^0.96.2",
     "@effect/platform-node": "^0.107.0",
     "effect": "^3.21.4"
@@ -19,8 +25,10 @@
   "devDependencies": {
     "@effect/vitest": "^0.29.0",
     "@types/node": "^26.1.0",
+    "eslint": "^10.6.0",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
     "vitest": "^3.2.6"
   }
 }

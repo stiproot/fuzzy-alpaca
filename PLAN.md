@@ -13,7 +13,7 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 | Milestone | Status | Notes |
 |---|---|---|
 | 1. Scaffold + health + contract skeleton | ✅ done (2026-07-05) | See deltas below |
-| 2. AlpacaClient + account/clock | ⬜ not started | |
+| 2. AlpacaClient + account/clock | ✅ done (2026-07-05) | Verified against live paper account |
 | 3. Order write path | ⬜ not started | |
 | 4. Order read + replace | ⬜ not started | |
 | 5. Positions | ⬜ not started | |
@@ -25,6 +25,15 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 - Envelope `requestId` field: correlation currently rides the `x-request-id` response header (set via `HttpApp.appendPreResponseHandler` — the API builder commits responses before plain middleware regains control); populating the JSON body field lands with the error-mapping work in milestone 2.
 - ESLint (SDK-import quarantine + hexagonal dependency rule) lands in milestone 2 alongside the first SDK import, per that milestone's DoD.
 - Effect versions pinned by install: `effect@3.21.x`, `@effect/platform@0.96.x`, `@effect/platform-node@0.107.x`, vitest 3 (peer range of `@effect/vitest`).
+
+**Milestone 2 deltas from plan:**
+- The SDK's ancient axios (22 CVEs via npm audit) is force-upgraded to `axios@^1.13` through npm `overrides` — verified working against the live paper API. Quarantine alone was the plan; the override actually clears the vulnerabilities.
+- Retry-After on 429 is honored additively (mandatory pause of `retryAfterSeconds` *plus* the schedule's backoff) rather than `max(backoff, retryAfter)` — strictly ≥ the planned wait, simpler, and deterministic under TestClock (proven in tests).
+- 404 refinement to `OrderNotFound`/`PositionNotFound` stays per-method (milestones 3/5); the shared map's 4xx default is `ValidationError`. Alpaca 401/403 auth rejections map to non-retryable `InternalError` (server misconfiguration, not caller error).
+- Business errors (`InsufficientBuyingPower`, `PdtRuleViolation`) surfacing on *read* paths are converted to defects in the call recipe — they're only typed failures on the order-mutation methods that can legitimately raise them (milestone 3).
+- Wire→domain renaming uses `Schema.fromKey` property signatures (decode schema) with a separate camelCase domain schema as the HTTP contract, instead of hand-written `Schema.transform` pairs.
+- ESLint lands as flat config (eslint 10 + typescript-eslint parser) enforcing both the SDK quarantine and the full hexagonal dependency rule; wired into CI.
+- `/health` `alpacaConnectivity` is now live `ok|degraded` (the `unknown` stub is gone).
 
 ## Tech stack & bootstrap
 

@@ -1,5 +1,6 @@
 import { HttpApiBuilder } from "@effect/platform"
 import { DateTime, Effect } from "effect"
+import { TradingService } from "../../../../application/trading/service.js"
 import { AppConfig } from "../../../../config.js"
 import { Api } from "../api.js"
 
@@ -8,11 +9,13 @@ export const SystemHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
     .handle("health", () =>
       Effect.gen(function* () {
         const config = yield* AppConfig
+        const trading = yield* TradingService
+        const alpacaConnectivity = yield* trading.connectivity()
         const now = yield* DateTime.now
         return {
           status: "ok" as const,
           tradingMode: config.tradingMode,
-          alpacaConnectivity: "unknown" as const,
+          alpacaConnectivity,
           timestamp: now,
         }
       })
@@ -23,4 +26,6 @@ export const SystemHandlers = HttpApiBuilder.group(Api, "system", (handlers) =>
         return { authenticated: true as const, tradingMode: config.tradingMode }
       })
     )
+    .handle("getAccount", () => TradingService.pipe(Effect.flatMap((t) => t.getAccount())))
+    .handle("getClock", () => TradingService.pipe(Effect.flatMap((t) => t.getClock())))
 )
