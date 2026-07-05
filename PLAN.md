@@ -14,7 +14,7 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 |---|---|---|
 | 1. Scaffold + health + contract skeleton | ✅ done (2026-07-05) | See deltas below |
 | 2. AlpacaClient + account/clock | ✅ done (2026-07-05) | Verified against live paper account |
-| 3. Order write path | ⬜ not started | |
+| 3. Order write path | ✅ done (2026-07-05) | Orchestrator can trade. Live paper verify: place → replay → cancel |
 | 4. Order read + replace | ⬜ not started | |
 | 5. Positions | ⬜ not started | |
 | 6. Market intelligence + ops hardening | ⬜ not started | |
@@ -34,6 +34,13 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 - Wire→domain renaming uses `Schema.fromKey` property signatures (decode schema) with a separate camelCase domain schema as the HTTP contract, instead of hand-written `Schema.transform` pairs.
 - ESLint lands as flat config (eslint 10 + typescript-eslint parser) enforcing both the SDK quarantine and the full hexagonal dependency rule; wired into CI.
 - `/health` `alpacaConnectivity` is now live `ok|degraded` (the `unknown` stub is gone).
+
+**Milestone 3 deltas from plan:**
+- Idempotent replay returns **201 with `idempotentReplay: true`** rather than a 200 — `HttpApi` endpoints declare one success status; agents branch on the body flag, which the OpenAPI documents. (Verified against real Alpaca: its duplicate-clientOrderId 422 is detected, the existing order is looked up and replayed.)
+- Malformed request bodies (schema violations, unknown keys, qty+notional both set) return the platform's `HttpApiDecodeError` 400 shape with per-field issues, not the error envelope. Alpaca-side rejections still use the `ValidationError` envelope. Richer for agents; documented as the one non-envelope error format.
+- Added an internal-only `DuplicateClientOrderId` domain error between adapter and application layer; it never crosses HTTP.
+- Cancel-of-canceled: adapter surfaces Alpaca's 422 as `OrderNotCancelable`; the service then re-reads the order and returns 200 with current state when the status is `canceled|pending_cancel|expired|done_for_day`, re-raising the 409 otherwise (e.g. `filled`).
+- The create-order path uses a dedicated mutation recipe with **no retry stage at all** (the plan implied retry-with-reconciliation; removing retry entirely is strictly safer — ambiguity handling lives in one place, the reconciliation).
 
 ## Tech stack & bootstrap
 
@@ -211,7 +218,7 @@ Envelope for every non-2xx: `{ error: { code, message, details?, retryable, requ
 | system | `GET /v1/whoami` | Auth smoke test for agents: `{ authenticated: true, tradingMode }`. |
 | system | `GET /v1/account` | Buying power, PDT flags, equity — agents call before sizing. |
 | system | `GET /v1/clock` | `isOpen`, `nextOpen`, `nextClose`. |
-| orders | `POST /v1/orders` | Strict body; qty XOR notional; `clientOrderId` required. 201 on create; 200 + `idempotentReplay: true` on replay. |
+| orders | `POST /v1/orders` | Strict body; qty XOR notional; `clientOrderId` required. 201 on create; 201 + `idempotentReplay: true` on replay. |
 | orders | `GET /v1/orders` | Filters: `status, symbols, side, after, until, limit, pageToken, direction`. → `{ items, nextPageToken? }`. |
 | orders | `GET /v1/orders/:orderId` | `?byClientOrderId=true` supported; 404 `OrderNotFound`. |
 | orders | `PATCH /v1/orders/:orderId` | Replace; returns the **new** order with `replacesOrderId`. |

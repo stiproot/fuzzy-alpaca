@@ -103,3 +103,54 @@ export const UnauthorizedT = transport(E.Unauthorized, "Unauthorized", {
   status: 401,
   retryable: false,
 })
+
+export const OrderNotFoundT = transport(E.OrderNotFound, "OrderNotFound", {
+  status: 404,
+  retryable: false,
+})
+
+export const OrderNotCancelableT = transport(E.OrderNotCancelable, "OrderNotCancelable", {
+  status: 409,
+  retryable: false,
+})
+
+export const ConfirmationRequiredT = transport(E.ConfirmationRequired, "ConfirmationRequired", {
+  status: 409,
+  retryable: false,
+})
+
+export const AssetNotFoundT = transport(E.AssetNotFound, "AssetNotFound", {
+  status: 404,
+  retryable: false,
+})
+
+export const AssetNotTradableT = transport(E.AssetNotTradable, "AssetNotTradable", {
+  status: 422,
+  retryable: false,
+})
+
+export const MaxOrderSizeExceededT = transport(E.MaxOrderSizeExceeded, "MaxOrderSizeExceeded", {
+  status: 422,
+  retryable: false,
+})
+
+const alpacaCodeDetails = {
+  encodeDetails: (e: { readonly alpacaCode?: number | undefined }) =>
+    e.alpacaCode !== undefined ? { alpacaCode: e.alpacaCode } : undefined,
+  decodeDetails: (d: unknown) => {
+    const r = detailsRecord(d)
+    return typeof r["alpacaCode"] === "number" ? { alpacaCode: r["alpacaCode"] } : {}
+  },
+}
+
+export const InsufficientBuyingPowerT = transport(E.InsufficientBuyingPower, "InsufficientBuyingPower", {
+  status: 422,
+  retryable: false,
+  ...alpacaCodeDetails,
+})
+
+export const PdtRuleViolationT = transport(E.PdtRuleViolation, "PdtRuleViolation", {
+  status: 422,
+  retryable: false,
+  ...alpacaCodeDetails,
+})

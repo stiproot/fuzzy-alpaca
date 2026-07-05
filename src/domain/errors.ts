@@ -79,6 +79,14 @@ export class InternalError extends Schema.TaggedError<InternalError>()("Internal
   message: Schema.String,
 }) {}
 
+// Internal-only: Alpaca rejected a create because the clientOrderId already
+// exists. Never crosses the HTTP boundary — the application layer converts it
+// into an idempotent replay of the existing order.
+export class DuplicateClientOrderId extends Schema.TaggedError<DuplicateClientOrderId>()(
+  "DuplicateClientOrderId",
+  { message: Schema.String }
+) {}
+
 // The transport-level failures any Alpaca-backed operation can produce.
 // Business errors (InsufficientBuyingPower, ...) are added per-method by the
 // operations that can actually raise them.

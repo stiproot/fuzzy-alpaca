@@ -8,7 +8,18 @@ export class AppConfig extends Effect.Service<AppConfig>()("AppConfig", {
     const alpacaSecretKey = yield* Config.redacted("APCA_API_SECRET_KEY")
     const alpacaLive = yield* Config.boolean("ALPACA_LIVE").pipe(Config.withDefault(false))
     const feed = yield* Config.literal("iex", "sip")("FEED").pipe(Config.withDefault("iex" as const))
+    const maxOrderNotional = yield* Config.option(Config.number("MAX_ORDER_NOTIONAL"))
+    const maxOrderQty = yield* Config.option(Config.number("MAX_ORDER_QTY"))
     const tradingMode = alpacaLive ? ("live" as const) : ("paper" as const)
-    return { port, serviceApiKey, alpacaKeyId, alpacaSecretKey, tradingMode, feed } as const
+    return {
+      port,
+      serviceApiKey,
+      alpacaKeyId,
+      alpacaSecretKey,
+      tradingMode,
+      feed,
+      maxOrderNotional,
+      maxOrderQty,
+    } as const
   }),
 }) {}

@@ -27,6 +27,12 @@ interface AxiosishError {
 const dataOf = (err: AxiosishError): { code?: number; message?: string } =>
   typeof err.response?.data === "object" && err.response.data !== null ? err.response.data : {}
 
+export const statusOf = (thrown: unknown): number | undefined =>
+  ((thrown ?? {}) as AxiosishError).response?.status
+
+export const dataMessageOf = (thrown: unknown): string | undefined =>
+  dataOf((thrown ?? {}) as AxiosishError).message
+
 // Alpaca error code for "subscription does not permit querying recent SIP data"
 const SIP_SUBSCRIPTION_CODE = 40010001
 

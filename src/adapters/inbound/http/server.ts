@@ -3,6 +3,7 @@ import { Layer } from "effect"
 import { TradingService } from "../../../application/trading/service.js"
 import { AppConfig } from "../../../config.js"
 import { Api } from "./api.js"
+import { OrdersHandlers } from "./handlers/orders.js"
 import { SystemHandlers } from "./handlers/system.js"
 import { AuthorizationLive } from "./middleware/auth.js"
 import { withRequestId } from "./middleware/requestId.js"
@@ -11,6 +12,7 @@ import { withRequestId } from "./middleware/requestId.js"
 // tests provide the in-memory one.
 export const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(SystemHandlers),
+  Layer.provide(OrdersHandlers),
   Layer.provide(TradingService.Default),
   Layer.provide(AuthorizationLive),
   Layer.provide(AppConfig.Default)
