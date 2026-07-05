@@ -8,8 +8,12 @@ import {
 import { AccountFromWire, type Account } from "../../../domain/schemas/account.js"
 import { AssetFromWire } from "../../../domain/schemas/asset.js"
 import { ClockFromWire, type Clock } from "../../../domain/schemas/clock.js"
-import { OrderFromWire, type CreateOrderRequest } from "../../../domain/schemas/order.js"
-import { AlpacaClient } from "../../../ports/broker.js"
+import {
+  OrderFromWire,
+  type CreateOrderRequest,
+  type ReplaceOrderRequest,
+} from "../../../domain/schemas/order.js"
+import { AlpacaClient, type ListOrdersParams } from "../../../ports/broker.js"
 
 // Fixtures are captured real Alpaca paper-account JSON (sanitized), decoded
 // through the same wire schemas production uses.
@@ -74,6 +78,10 @@ export const accountFixture: Account = Schema.decodeUnknownSync(AccountFromWire)
 export const clockFixture: Clock = Schema.decodeUnknownSync(ClockFromWire)(wireClockFixture)
 
 const FIXED_NOW = "2026-07-05T12:00:00.000000Z"
+
+// Monotonic per-order timestamps so cursor pagination is exercisable.
+const seqTimestamp = (seq: number) =>
+  `2026-07-05T12:${String(Math.floor(seq / 60)).padStart(2, "0")}:${String(seq % 60).padStart(2, "0")}.000000Z`
 
 type WireOrder = Record<string, unknown>
 
@@ -176,7 +184,12 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
             orderSeq += 1
             const id = `00000000-0000-4000-8000-${String(orderSeq).padStart(12, "0")}`
             const status = options.onCreateStatus?.(req) ?? "accepted"
-            const wire = makeWireOrder(req, id, status)
+            const timestamp = seqTimestamp(orderSeq)
+            const wire = {
+              ...makeWireOrder(req, id, status),
+              created_at: timestamp,
+              submitted_at: timestamp,
+            }
             yield* Ref.update(orders, (all) => [...all, wire])
             const failPending = yield* Ref.getAndSet(submitFailurePending, false)
             if (failPending && options.failCreateAfterSubmitOnce !== undefined) {
@@ -186,6 +199,82 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
           }),
 
         getOrder,
+
+        getOrders: (params: ListOrdersParams) =>
+          Ref.get(orders).pipe(
+            Effect.flatMap((all) => {
+              const statusMatch = (o: WireOrder) => {
+                const open = OPEN_STATUSES.includes(o["status"] as string)
+                if (params.status === "all") return true
+                if (params.status === "closed") return !open
+                return open
+              }
+              const filtered = all
+                .filter(statusMatch)
+                .filter(
+                  (o) =>
+                    params.symbols === undefined ||
+                    params.symbols.length === 0 ||
+                    params.symbols.includes(o["symbol"] as string)
+                )
+                .filter(
+                  (o) =>
+                    params.after === undefined ||
+                    Date.parse(o["created_at"] as string) > Date.parse(params.after)
+                )
+                .filter(
+                  (o) =>
+                    params.until === undefined ||
+                    Date.parse(o["created_at"] as string) < Date.parse(params.until)
+                )
+                .sort((a, b) =>
+                  params.direction === "asc"
+                    ? Date.parse(a["created_at"] as string) - Date.parse(b["created_at"] as string)
+                    : Date.parse(b["created_at"] as string) - Date.parse(a["created_at"] as string)
+                )
+                .slice(0, params.limit)
+              return Effect.forEach(filtered, (wire) => decodeOrder(wire).pipe(Effect.orDie))
+            })
+          ),
+
+        replaceOrder: (id: string, params: ReplaceOrderRequest) =>
+          getOrder(id).pipe(
+            Effect.flatMap((old) => {
+              if (!OPEN_STATUSES.includes(old.status)) {
+                return Effect.fail(
+                  new OrderNotCancelable({ message: `order ${id} is ${old.status}, cannot replace` })
+                )
+              }
+              orderSeq += 1
+              const newId = `00000000-0000-4000-8000-${String(orderSeq).padStart(12, "0")}`
+              const timestamp = seqTimestamp(orderSeq)
+              return Ref.get(orders).pipe(
+                Effect.flatMap((all) => {
+                  const oldWire = all.find((o) => o["id"] === id)!
+                  const newWire: WireOrder = {
+                    ...oldWire,
+                    id: newId,
+                    client_order_id: params.clientOrderId ?? `replace-${orderSeq}`,
+                    status: "accepted",
+                    created_at: timestamp,
+                    submitted_at: timestamp,
+                    replaces: id,
+                    replaced_by: null,
+                    ...(params.qty !== undefined ? { qty: params.qty } : {}),
+                    ...(params.timeInForce !== undefined ? { time_in_force: params.timeInForce } : {}),
+                    ...(params.limitPrice !== undefined ? { limit_price: params.limitPrice } : {}),
+                    ...(params.stopPrice !== undefined ? { stop_price: params.stopPrice } : {}),
+                  }
+                  return Ref.update(orders, (current) => [
+                    ...current.map((o) =>
+                      o["id"] === id ? { ...o, status: "replaced", replaced_by: newId } : o
+                    ),
+                    newWire,
+                  ]).pipe(Effect.andThen(decodeOrder(newWire).pipe(Effect.orDie)))
+                })
+              )
+            })
+          ),
 
         getOrderByClientOrderId: (clientOrderId: string) =>
           findWire((o) => o["client_order_id"] === clientOrderId).pipe(

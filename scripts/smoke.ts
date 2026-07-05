@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect"
 import { AlpacaClientLive } from "../src/adapters/outbound/alpaca/live.js"
 import { TradingService } from "../src/application/trading/service.js"
 import { AppConfig } from "../src/config.js"
-import { CreateOrderRequest } from "../src/domain/schemas/order.js"
+import { CreateOrderRequest, ReplaceOrderRequest } from "../src/domain/schemas/order.js"
 import { AlpacaClient } from "../src/ports/broker.js"
 
 // Paper-account smoke — exercises the real Alpaca API; not run in CI.
@@ -52,7 +52,35 @@ const program = Effect.gen(function* () {
     sameOrder: replayed.orderId === placed.orderId,
   })
 
-  const canceled = yield* trading.cancelOrder(placed.orderId)
+  // Reads: list + lookup by clientOrderId
+  const page = yield* trading.listOrders({ status: "open", limit: 50 })
+  yield* Effect.logInfo("open orders", {
+    count: page.items.length,
+    containsPlaced: page.items.some((o) => o.orderId === placed.orderId),
+  })
+  const byCid = yield* trading.getOrderFlexible(clientOrderId, true)
+  yield* Effect.logInfo("lookup by clientOrderId", { found: byCid.orderId === placed.orderId })
+
+  // Replace, tolerating market-state rejection outside trading hours
+  const cancelTarget = yield* trading
+    .replaceOrder(placed.orderId, yield* Schema.decodeUnknown(ReplaceOrderRequest)({ limitPrice: "1.05" }))
+    .pipe(
+      Effect.tap((replaced) =>
+        Effect.logInfo("replaced", {
+          newOrderId: replaced.orderId,
+          replaces: replaced.replacesOrderId,
+          limitPrice: replaced.limitPrice,
+        })
+      ),
+      Effect.map((replaced) => replaced.orderId),
+      Effect.catchTag("OrderNotCancelable", (e) =>
+        Effect.logWarning("replace rejected by Alpaca (likely market closed)", {
+          message: e.message,
+        }).pipe(Effect.as(placed.orderId))
+      )
+    )
+
+  const canceled = yield* trading.cancelOrder(cancelTarget)
   yield* Effect.logInfo("canceled", { orderId: canceled.orderId, status: canceled.status })
 
   yield* Effect.logInfo("SMOKE OK")

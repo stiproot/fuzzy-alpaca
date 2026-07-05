@@ -4,7 +4,10 @@ import { OrderId } from "../../../../domain/primitives.js"
 import {
   CancelAllResponse,
   CreateOrderRequest,
+  ListOrdersQuery,
+  OrderPage,
   OrderResponse,
+  ReplaceOrderRequest,
 } from "../../../../domain/schemas/order.js"
 import {
   AssetNotFoundT,
@@ -35,6 +38,46 @@ export const ordersGroup = HttpApiGroup.make("orders")
       .addError(AssetNotTradableT)
       .addError(InsufficientBuyingPowerT)
       .addError(PdtRuleViolationT)
+      .addError(RateLimitedT)
+      .addError(UnavailableT)
+      .addError(TimeoutT)
+      .addError(ContractErrorT)
+      .addError(InternalErrorT)
+  )
+  .add(
+    HttpApiEndpoint.get("listOrders", "/v1/orders")
+      .setUrlParams(ListOrdersQuery)
+      .addSuccess(OrderPage)
+      .addError(ValidationErrorT)
+      .addError(RateLimitedT)
+      .addError(UnavailableT)
+      .addError(TimeoutT)
+      .addError(ContractErrorT)
+      .addError(InternalErrorT)
+  )
+  .add(
+    HttpApiEndpoint.get("getOrder", "/v1/orders/:orderId")
+      .setPath(Schema.Struct({ orderId: Schema.String }))
+      .setUrlParams(Schema.Struct({ byClientOrderId: Schema.optional(Schema.BooleanFromString) }))
+      .addSuccess(OrderResponse)
+      .addError(OrderNotFoundT)
+      .addError(ValidationErrorT)
+      .addError(RateLimitedT)
+      .addError(UnavailableT)
+      .addError(TimeoutT)
+      .addError(ContractErrorT)
+      .addError(InternalErrorT)
+  )
+  .add(
+    HttpApiEndpoint.patch("replaceOrder", "/v1/orders/:orderId")
+      .setPath(Schema.Struct({ orderId: OrderId }))
+      .setPayload(ReplaceOrderRequest)
+      .addSuccess(OrderResponse)
+      .addError(OrderNotFoundT)
+      .addError(OrderNotCancelableT)
+      .addError(InsufficientBuyingPowerT)
+      .addError(PdtRuleViolationT)
+      .addError(ValidationErrorT)
       .addError(RateLimitedT)
       .addError(UnavailableT)
       .addError(TimeoutT)

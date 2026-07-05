@@ -15,7 +15,7 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 | 1. Scaffold + health + contract skeleton | ✅ done (2026-07-05) | See deltas below |
 | 2. AlpacaClient + account/clock | ✅ done (2026-07-05) | Verified against live paper account |
 | 3. Order write path | ✅ done (2026-07-05) | Orchestrator can trade. Live paper verify: place → replay → cancel |
-| 4. Order read + replace | ⬜ not started | |
+| 4. Order read + replace | ✅ done (2026-07-05) | Live replace pending market hours (Alpaca rejects replace of `accepted` orders while closed) — rolls into M6 smoke |
 | 5. Positions | ⬜ not started | |
 | 6. Market intelligence + ops hardening | ⬜ not started | |
 
@@ -41,6 +41,13 @@ Non-goals (MVP): streaming/websockets, options/crypto/OTC, multi-account, bracke
 - Added an internal-only `DuplicateClientOrderId` domain error between adapter and application layer; it never crosses HTTP.
 - Cancel-of-canceled: adapter surfaces Alpaca's 422 as `OrderNotCancelable`; the service then re-reads the order and returns 200 with current state when the status is `canceled|pending_cancel|expired|done_for_day`, re-raising the 409 otherwise (e.g. `filled`).
 - The create-order path uses a dedicated mutation recipe with **no retry stage at all** (the plan implied retry-with-reconciliation; removing retry entirely is strictly safer — ambiguity handling lives in one place, the reconciliation).
+
+**Milestone 4 deltas from plan:**
+- Alpaca's `/v2/orders` has **no native page tokens** — it bounds by `after`/`until`. The uniform `{ items, nextPageToken? }` contract is synthesized: the opaque token encodes the last item's `createdAt` + direction and is folded back into the corresponding bound. Order-list `limit` max is 500 (Alpaca's cap), not the generic 1000.
+- `side` has no Alpaca-side filter; it is applied post-fetch, so a side-filtered page may contain fewer than `limit` items while still having a `nextPageToken`.
+- List defaults mirror Alpaca: `status=open`, `direction=desc`, `limit=100` (ours).
+- Replace of a non-replaceable order reuses `OrderNotCancelable` (409) rather than adding a new error code; replace is a no-retry mutation like create (no reconciliation — the agent inspects via GET on ambiguity).
+- `GET /v1/orders/:orderId` takes a plain string path param (a clientOrderId isn't a UUID); a non-UUID without `byClientOrderId=true` gets a 400 whose message points at the flag.
 
 ## Tech stack & bootstrap
 

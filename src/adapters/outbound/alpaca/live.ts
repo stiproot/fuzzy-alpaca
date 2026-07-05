@@ -14,8 +14,13 @@ import type { ClientOrderId, OrderId, TickerSymbol } from "../../../domain/primi
 import { AccountFromWire } from "../../../domain/schemas/account.js"
 import { AssetFromWire } from "../../../domain/schemas/asset.js"
 import { ClockFromWire } from "../../../domain/schemas/clock.js"
-import { CancelAllFromWire, OrderFromWire, type CreateOrderRequest } from "../../../domain/schemas/order.js"
-import { AlpacaClient } from "../../../ports/broker.js"
+import {
+  CancelAllFromWire,
+  OrderFromWire,
+  type CreateOrderRequest,
+  type ReplaceOrderRequest,
+} from "../../../domain/schemas/order.js"
+import { AlpacaClient, type ListOrdersParams } from "../../../ports/broker.js"
 import { dataMessageOf, isBusinessError, mapSdkError, statusOf, type MappedAlpacaError } from "./errors-map.js"
 
 // The only SDK surface we consume; responses are re-decoded through our own
@@ -25,7 +30,9 @@ interface AlpacaSdk {
   getClock(): Promise<unknown>
   createOrder(body: Record<string, unknown>): Promise<unknown>
   getOrder(id: string): Promise<unknown>
+  getOrders(params: Record<string, unknown>): Promise<unknown>
   getOrderByClientId(clientOrderId: string): Promise<unknown>
+  replaceOrder(id: string, body: Record<string, unknown>): Promise<unknown>
   cancelOrder(id: string): Promise<unknown>
   cancelAllOrders(): Promise<unknown>
   getAsset(symbol: string): Promise<unknown>
@@ -183,6 +190,50 @@ export const AlpacaClientLive = Layer.effect(
           statusOf(thrown) === 404
             ? new OrderNotFound({ message: `order ${id} not found` })
             : undefined
+        ),
+
+      getOrders: (params: ListOrdersParams) =>
+        alpacaCall(
+          "getOrders",
+          () =>
+            sdk.getOrders({
+              status: params.status,
+              limit: params.limit,
+              direction: params.direction,
+              ...(params.after !== undefined ? { after: params.after } : {}),
+              ...(params.until !== undefined ? { until: params.until } : {}),
+              ...(params.symbols !== undefined && params.symbols.length > 0
+                ? { symbols: params.symbols.join(",") }
+                : {}),
+            }),
+          Schema.Array(OrderFromWire)
+        ),
+
+      // Mutation: same no-retry stance as createOrder. 404/422 refined; a
+      // replace of a non-replaceable order reuses OrderNotCancelable (409).
+      replaceOrder: (id: OrderId, params: ReplaceOrderRequest) =>
+        alpacaMutationCall(
+          "replaceOrder",
+          () =>
+            sdk.replaceOrder(id, {
+              ...(params.qty !== undefined ? { qty: params.qty } : {}),
+              ...(params.timeInForce !== undefined ? { time_in_force: params.timeInForce } : {}),
+              ...(params.limitPrice !== undefined ? { limit_price: params.limitPrice } : {}),
+              ...(params.stopPrice !== undefined ? { stop_price: params.stopPrice } : {}),
+              ...(params.clientOrderId !== undefined
+                ? { client_order_id: params.clientOrderId }
+                : {}),
+            }),
+          OrderFromWire,
+          (thrown) => {
+            const status = statusOf(thrown)
+            if (status === 404) return new OrderNotFound({ message: `order ${id} not found` })
+            if (status === 422 && !/buying power|pattern day trad/i.test(dataMessageOf(thrown) ?? ""))
+              return new OrderNotCancelable({
+                message: dataMessageOf(thrown) ?? `order ${id} cannot be replaced`,
+              })
+            return undefined
+          }
         ),
 
       getOrderByClientOrderId: (id: ClientOrderId) =>

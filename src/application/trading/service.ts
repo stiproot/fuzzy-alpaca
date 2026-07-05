@@ -1,4 +1,4 @@
-import { Cache, Effect, Option } from "effect"
+import { Cache, DateTime, Effect, Option, Schema } from "effect"
 import {
   AlpacaUnavailable,
   AssetNotFound,
@@ -6,16 +6,24 @@ import {
   ConfirmationRequired,
   MaxOrderSizeExceeded,
   OrderNotCancelable,
+  OrderNotFound,
   ValidationError,
   type AlpacaError,
   type InsufficientBuyingPower,
-  type OrderNotFound,
   type PdtRuleViolation,
 } from "../../domain/errors.js"
-import type { OrderId, TickerSymbol, TradingMode } from "../../domain/primitives.js"
-import type { CreateOrderRequest, Order, OrderResponse } from "../../domain/schemas/order.js"
+import { ClientOrderId, OrderId, type TickerSymbol, type TradingMode } from "../../domain/primitives.js"
+import type {
+  CreateOrderRequest,
+  ListOrdersQuery,
+  Order,
+  OrderPage,
+  OrderResponse,
+  ReplaceOrderRequest,
+} from "../../domain/schemas/order.js"
 import { AppConfig } from "../../config.js"
-import { AlpacaClient } from "../../ports/broker.js"
+import { AlpacaClient, type ListOrdersParams } from "../../ports/broker.js"
+import { decodeOrdersPageToken, encodeOrdersPageToken } from "./page-token.js"
 
 export type PlaceOrderError =
   | AlpacaError
@@ -212,9 +220,109 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
             })
           )
 
+    // Uniform cursor pagination synthesized over Alpaca's after/until bounds:
+    // the token carries the boundary createdAt of the previous page's last
+    // item. `side` has no Alpaca-side filter, so it is applied post-fetch —
+    // a filtered page may hold fewer than `limit` items.
+    const listOrders = (
+      query: ListOrdersQuery
+    ): Effect.Effect<OrderPage, AlpacaError | ValidationError> =>
+      Effect.gen(function* () {
+        const direction = query.direction ?? "desc"
+        const limit = query.limit ?? 100
+        const cursor =
+          query.pageToken !== undefined
+            ? yield* decodeOrdersPageToken(query.pageToken).pipe(
+                Effect.filterOrFail(
+                  (c) => c.direction === direction,
+                  () =>
+                    new ValidationError({
+                      message: "pageToken direction does not match the requested direction",
+                    })
+                )
+              )
+            : undefined
+
+        const params: ListOrdersParams = {
+          status: query.status ?? "open",
+          limit,
+          direction,
+          symbols: query.symbols?.split(",").map((s) => s.trim().toUpperCase()),
+          // the cursor boundary supersedes the caller's own bound on that side
+          after: direction === "asc" ? (cursor?.boundary ?? query.after) : query.after,
+          until: direction === "desc" ? (cursor?.boundary ?? query.until) : query.until,
+        }
+
+        const fetched = yield* broker.getOrders(params)
+        const items =
+          query.side === undefined ? fetched : fetched.filter((o) => o.side === query.side)
+        const last = fetched[fetched.length - 1]
+        return {
+          items,
+          ...(fetched.length === limit && last !== undefined
+            ? {
+                nextPageToken: encodeOrdersPageToken({
+                  boundary: DateTime.formatIso(last.createdAt),
+                  direction,
+                }),
+              }
+            : {}),
+        }
+      }).pipe(Effect.withSpan("trading.listOrders"))
+
+    const getOrderFlexible = (
+      rawId: string,
+      byClientOrderId: boolean
+    ): Effect.Effect<OrderResponse, AlpacaError | OrderNotFound | ValidationError> =>
+      byClientOrderId
+        ? Schema.decodeUnknown(ClientOrderId)(rawId).pipe(
+            Effect.mapError(() => new ValidationError({ message: `invalid clientOrderId: ${rawId}` })),
+            Effect.flatMap((cid) => broker.getOrderByClientOrderId(cid)),
+            Effect.flatMap(
+              Option.match({
+                onNone: () =>
+                  Effect.fail(
+                    new OrderNotFound({ message: `no order with clientOrderId ${rawId}` })
+                  ),
+                onSome: Effect.succeed,
+              })
+            ),
+            Effect.map((order) => withMeta(order, false))
+          )
+        : Schema.decodeUnknown(OrderId)(rawId).pipe(
+            Effect.mapError(
+              () => new ValidationError({ message: `orderId must be a UUID (got ${rawId}); pass byClientOrderId=true to look up by clientOrderId` })
+            ),
+            Effect.flatMap((id) => broker.getOrder(id)),
+            Effect.map((order) => withMeta(order, false))
+          )
+
+    const replaceOrder = (
+      orderId: OrderId,
+      req: ReplaceOrderRequest
+    ): Effect.Effect<
+      OrderResponse,
+      AlpacaError | OrderNotFound | OrderNotCancelable | InsufficientBuyingPower | PdtRuleViolation
+    > =>
+      broker.replaceOrder(orderId, req).pipe(
+        Effect.map((order) => withMeta(order, false)),
+        Effect.tap((response) =>
+          audit("replaceOrder", {
+            orderId,
+            outcome: response.orderId,
+            replaces: orderId,
+          })
+        ),
+        Effect.tapError((error) => audit("replaceOrder.failed", { orderId, outcome: error._tag })),
+        Effect.withSpan("trading.replaceOrder")
+      )
+
     return {
       getAccount: () => broker.getAccount(),
       getClock: () => broker.getClock(),
+      listOrders,
+      getOrderFlexible,
+      replaceOrder,
       // Fast health probe: 2s budget, never fails — degraded on any problem.
       connectivity: (): Effect.Effect<"ok" | "degraded"> =>
         broker.getClock().pipe(

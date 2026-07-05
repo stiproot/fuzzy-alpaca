@@ -129,3 +129,49 @@ export const CancelAllFromWire = Schema.Array(
     status: Schema.Number,
   })
 )
+
+// ---- Read & replace ----
+
+export const OrderListStatus = Schema.Literal("open", "closed", "all")
+
+export const ListOrdersQuery = Schema.Struct({
+  status: Schema.optional(OrderListStatus),
+  /** comma-separated ticker symbols */
+  symbols: Schema.optional(Schema.String),
+  side: Schema.optional(OrderSide),
+  /** ISO-8601 lower bound (exclusive) on createdAt */
+  after: Schema.optional(Schema.String),
+  /** ISO-8601 upper bound (exclusive) on createdAt */
+  until: Schema.optional(Schema.String),
+  limit: Schema.optional(
+    Schema.NumberFromString.pipe(Schema.int(), Schema.between(1, 500))
+  ),
+  pageToken: Schema.optional(Schema.String),
+  direction: Schema.optional(Schema.Literal("asc", "desc")),
+})
+export type ListOrdersQuery = typeof ListOrdersQuery.Type
+
+export const OrderPage = Schema.Struct({
+  items: Schema.Array(Order),
+  nextPageToken: Schema.optional(Schema.String),
+})
+export type OrderPage = typeof OrderPage.Type
+
+export const ReplaceOrderRequest = Schema.Struct({
+  qty: Schema.optional(PositiveDecimalString),
+  timeInForce: Schema.optional(TimeInForce),
+  limitPrice: Schema.optional(PositiveDecimalString),
+  stopPrice: Schema.optional(PositiveDecimalString),
+  /** new idempotency key for the replacement order */
+  clientOrderId: Schema.optional(ClientOrderId),
+}).pipe(
+  Schema.filter(
+    (r) =>
+      r.qty !== undefined ||
+      r.timeInForce !== undefined ||
+      r.limitPrice !== undefined ||
+      r.stopPrice !== undefined ||
+      "at least one of qty, timeInForce, limitPrice, stopPrice must be provided"
+  )
+).annotations({ parseOptions: { onExcessProperty: "error" } })
+export type ReplaceOrderRequest = typeof ReplaceOrderRequest.Type
