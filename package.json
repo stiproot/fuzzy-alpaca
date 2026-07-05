@@ -1,0 +1,26 @@
+{
+  "name": "fuzzy-alpaca-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTP API service wrapping the Alpaca trading platform for an agent workflow orchestrator",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "openapi": "tsx scripts/emit-openapi.ts"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.96.2",
+    "@effect/platform-node": "^0.107.0",
+    "effect": "^3.21.4"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.29.0",
+    "@types/node": "^26.1.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
+  }
+}
