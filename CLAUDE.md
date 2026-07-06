@@ -8,6 +8,8 @@ Effect-TS hexagonal service wrapping Alpaca for an agent workflow orchestrator.
   stances). Read this before changing structure.
 - `README.md` — API surface, runbook, env vars, scripts.
 - `openapi.json` (`npm run openapi`) — the authoritative wire contract.
+- `docs/orchestration-guide.md` — how the (external) orchestrator should consume this API:
+  usage playbook, Postgres state-store design, intelligence-layer shape, guardrails.
 - `docs/concepts/` — plain-language explainers (e.g. trading basics) for humans new to the domain.
 - `docs/plans/` — historical plan documents only (see workflow below). Never current truth.
 
