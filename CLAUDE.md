@@ -10,6 +10,9 @@ Effect-TS hexagonal service wrapping Alpaca for an agent workflow orchestrator.
 - `openapi.json` (`npm run openapi`) — the authoritative wire contract.
 - `docs/orchestration-guide.md` — how the (external) orchestrator should consume this API:
   usage playbook, Postgres state-store design, intelligence-layer shape, guardrails.
+- `docs/integration-with-h.md` — the concrete integration contract with the `h` Dapr-Workflows
+  harness: standalone-repo boundary decision, the trading-mcp + trading-activity glue model, and
+  where the idempotency handshake lives.
 - `docs/concepts/` — plain-language explainers (e.g. trading basics) for humans new to the domain.
 - `docs/plans/` — historical plan documents only (see workflow below). Never current truth.
 
