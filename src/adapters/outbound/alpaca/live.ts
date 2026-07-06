@@ -14,7 +14,7 @@ import {
   isRetryableAlpacaError,
   type AlpacaError,
 } from "../../../domain/errors.js"
-import type { ClientOrderId, OrderId, TickerSymbol } from "../../../domain/primitives.js"
+import type { AnySymbol, ClientOrderId, OrderId } from "../../../domain/primitives.js"
 import { AccountFromWire } from "../../../domain/schemas/account.js"
 import { AssetFromWire } from "../../../domain/schemas/asset.js"
 import { ClockFromWire } from "../../../domain/schemas/clock.js"
@@ -356,13 +356,13 @@ export const AlpacaClientLive = Layer.effect(
       cancelAllOrders: () =>
         alpacaCall("cancelAllOrders", () => sdk.cancelAllOrders(), CancelAllFromWire),
 
-      getAsset: (symbol: TickerSymbol) =>
+      getAsset: (symbol: AnySymbol) =>
         alpacaOptionalCall("getAsset", () => sdk.getAsset(symbol), AssetFromWire),
 
       getPositions: () =>
         alpacaCall("getPositions", () => sdk.getPositions(), Schema.Array(PositionFromWire)),
 
-      getLatestQuote: (symbol: TickerSymbol) =>
+      getLatestQuote: (symbol: AnySymbol) =>
         alpacaReadPipeline(
           "getLatestQuote",
           restGetRaw("getLatestQuote", `${DATA_BASE_URL}/${symbol}/quotes/latest`, {
@@ -371,7 +371,7 @@ export const AlpacaClientLive = Layer.effect(
           LatestQuoteFromWire
         ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.quote }))),
 
-      getLatestTrade: (symbol: TickerSymbol) =>
+      getLatestTrade: (symbol: AnySymbol) =>
         alpacaReadPipeline(
           "getLatestTrade",
           restGetRaw("getLatestTrade", `${DATA_BASE_URL}/${symbol}/trades/latest`, {
@@ -380,14 +380,14 @@ export const AlpacaClientLive = Layer.effect(
           LatestTradeFromWire
         ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.trade }))),
 
-      getSnapshot: (symbol: TickerSymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
+      getSnapshot: (symbol: AnySymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
         alpacaReadPipeline(
           "getSnapshot",
           restGetRaw("getSnapshot", `${DATA_BASE_URL}/${symbol}/snapshot`, { feed: config.feed }),
           SnapshotFromWire
         ),
 
-      getBars: (symbol: TickerSymbol, params: GetBarsParams): Effect.Effect<BarsPage, AlpacaError | AssetNotFound> =>
+      getBars: (symbol: AnySymbol, params: GetBarsParams): Effect.Effect<BarsPage, AlpacaError | AssetNotFound> =>
         alpacaReadPipeline(
           "getBars",
           restGetRaw("getBars", `${DATA_BASE_URL}/${symbol}/bars`, {
@@ -426,11 +426,11 @@ export const AlpacaClientLive = Layer.effect(
           Schema.Array(CalendarDay)
         ),
 
-      getPosition: (symbol: TickerSymbol) =>
+      getPosition: (symbol: AnySymbol) =>
         alpacaOptionalCall("getPosition", () => sdk.getPosition(symbol), PositionFromWire),
 
       // Returns the liquidation order Alpaca creates for the close.
-      closePosition: (symbol: TickerSymbol, params: ClosePositionParams) =>
+      closePosition: (symbol: AnySymbol, params: ClosePositionParams) =>
         alpacaMutationCall(
           "closePosition",
           () =>

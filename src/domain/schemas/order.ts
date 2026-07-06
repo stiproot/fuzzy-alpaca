@@ -8,16 +8,17 @@ import {
   OrderStatus,
   OrderType,
   PositiveDecimalString,
-  TickerSymbol,
+  AnySymbol,
   TimeInForce,
   TradingMode,
+  isCryptoSymbol,
 } from "../primitives.js"
 
 // Domain shape — also the HTTP contract. Absent values encode as null.
 export const Order = Schema.Struct({
   orderId: OrderId,
   clientOrderId: ClientOrderId,
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   side: OrderSide,
   type: OrderType,
   timeInForce: TimeInForce,
@@ -48,7 +49,7 @@ const fromWire = <A, I, R>(schema: Schema.Schema<A, I, R>, wireKey: string) =>
 export const OrderFromWire = Schema.Struct({
   orderId: fromWire(OrderId, "id"),
   clientOrderId: fromWire(ClientOrderId, "client_order_id"),
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   side: OrderSide,
   type: OrderType,
   timeInForce: fromWire(TimeInForce, "time_in_force"),
@@ -73,7 +74,7 @@ export const OrderFromWire = Schema.Struct({
 // ---- Requests ----
 
 const createOrderBase = {
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   side: OrderSide,
   type: OrderType,
   timeInForce: TimeInForce,
@@ -97,6 +98,15 @@ export const CreateOrderRequest = Schema.Union(
     if (needsStop && o.stopPrice === undefined) return `stopPrice is required for type=${o.type}`
     if (!needsStop && o.stopPrice !== undefined) return `stopPrice is not allowed for type=${o.type}`
     if ("notional" in o && o.type !== "market") return "notional orders must have type=market"
+    // Crypto restrictions (rejected here with a clear message instead of a
+    // round-trip to Alpaca): no plain stop orders, gtc/ioc only, no
+    // extended-hours concept.
+    if (isCryptoSymbol(o.symbol)) {
+      if (o.type === "stop") return "crypto orders support market, limit, and stop_limit only"
+      if (o.timeInForce !== "gtc" && o.timeInForce !== "ioc")
+        return `crypto orders support timeInForce gtc or ioc only (got ${o.timeInForce})`
+      if (o.extendedHours === true) return "extendedHours does not apply to crypto (24/7 market)"
+    }
     return true
   })
 ).annotations({ parseOptions: { onExcessProperty: "error" } })

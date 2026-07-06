@@ -8,7 +8,7 @@ import type {
   PdtRuleViolation,
   PositionNotFound,
 } from "../domain/errors.js"
-import type { ClientOrderId, OrderId, TickerSymbol } from "../domain/primitives.js"
+import type { AnySymbol, ClientOrderId, OrderId } from "../domain/primitives.js"
 import type { Account } from "../domain/schemas/account.js"
 import type { Asset } from "../domain/schemas/asset.js"
 import type { Clock } from "../domain/schemas/clock.js"
@@ -91,31 +91,31 @@ export class AlpacaClient extends Context.Tag("AlpacaClient")<
       ReadonlyArray<{ readonly orderId: string; readonly status: number }>,
       AlpacaError
     >
-    readonly getAsset: (symbol: TickerSymbol) => Effect.Effect<Option.Option<Asset>, AlpacaError>
+    readonly getAsset: (symbol: AnySymbol) => Effect.Effect<Option.Option<Asset>, AlpacaError>
     readonly getPositions: () => Effect.Effect<ReadonlyArray<Position>, AlpacaError>
     readonly getPosition: (
-      symbol: TickerSymbol
+      symbol: AnySymbol
     ) => Effect.Effect<Option.Option<Position>, AlpacaError>
     // Mutation (submits a liquidation order): not blind-retried by the adapter.
     readonly closePosition: (
-      symbol: TickerSymbol,
+      symbol: AnySymbol,
       params: ClosePositionParams
     ) => Effect.Effect<
       Order,
       AlpacaError | PositionNotFound | InsufficientBuyingPower | PdtRuleViolation
     >
     readonly getLatestQuote: (
-      symbol: TickerSymbol
+      symbol: AnySymbol
     ) => Effect.Effect<Quote, AlpacaError | AssetNotFound>
     readonly getLatestTrade: (
-      symbol: TickerSymbol
+      symbol: AnySymbol
     ) => Effect.Effect<Trade, AlpacaError | AssetNotFound>
     readonly getSnapshot: (
-      symbol: TickerSymbol
+      symbol: AnySymbol
     ) => Effect.Effect<Snapshot, AlpacaError | AssetNotFound>
     // Direct REST underneath — carries Alpaca's real next_page_token.
     readonly getBars: (
-      symbol: TickerSymbol,
+      symbol: AnySymbol,
       params: GetBarsParams
     ) => Effect.Effect<BarsPage, AlpacaError | AssetNotFound>
     readonly getAssets: (params: ListAssetsParams) => Effect.Effect<ReadonlyArray<Asset>, AlpacaError>

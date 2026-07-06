@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { TickerSymbol } from "../primitives.js"
+import { AnySymbol } from "../primitives.js"
 
 // Market-data prices are JSON numbers on Alpaca's data API (unlike the
 // trading API's money strings) and are informational, not transactional —
@@ -18,7 +18,7 @@ const quoteDataFields = {
   bidSize: Schema.Number,
 }
 
-export const Quote = Schema.Struct({ symbol: TickerSymbol, ...quoteDataFields })
+export const Quote = Schema.Struct({ symbol: AnySymbol, ...quoteDataFields })
 export type Quote = typeof Quote.Type
 
 export const QuoteDataFromWire = Schema.Struct({
@@ -30,7 +30,7 @@ export const QuoteDataFromWire = Schema.Struct({
 })
 
 export const LatestQuoteFromWire = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   quote: QuoteDataFromWire,
 })
 
@@ -42,7 +42,7 @@ const tradeDataFields = {
   size: Schema.Number,
 }
 
-export const Trade = Schema.Struct({ symbol: TickerSymbol, ...tradeDataFields })
+export const Trade = Schema.Struct({ symbol: AnySymbol, ...tradeDataFields })
 export type Trade = typeof Trade.Type
 
 export const TradeDataFromWire = Schema.Struct({
@@ -52,7 +52,7 @@ export const TradeDataFromWire = Schema.Struct({
 })
 
 export const LatestTradeFromWire = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   trade: TradeDataFromWire,
 })
 
@@ -84,7 +84,7 @@ export const BarFromWire = Schema.Struct({
 // ---- Snapshot ----
 
 export const Snapshot = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   latestQuote: Schema.OptionFromNullOr(Schema.Struct(quoteDataFields)),
   latestTrade: Schema.OptionFromNullOr(Schema.Struct(tradeDataFields)),
   minuteBar: Schema.OptionFromNullOr(Bar),
@@ -94,7 +94,7 @@ export const Snapshot = Schema.Struct({
 export type Snapshot = typeof Snapshot.Type
 
 export const SnapshotFromWire = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   latestQuote: Schema.OptionFromNullOr(QuoteDataFromWire),
   latestTrade: Schema.OptionFromNullOr(TradeDataFromWire),
   minuteBar: Schema.OptionFromNullOr(BarFromWire),
@@ -105,14 +105,14 @@ export const SnapshotFromWire = Schema.Struct({
 // ---- Bars page (real Alpaca next_page_token) ----
 
 export const BarsPage = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   items: Schema.Array(Bar),
   nextPageToken: Schema.optional(Schema.String),
 })
 export type BarsPage = typeof BarsPage.Type
 
 export const BarsPageFromWire = Schema.Struct({
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   bars: Schema.OptionFromNullOr(Schema.Array(BarFromWire)),
   nextPageToken: Schema.propertySignature(Schema.OptionFromNullOr(Schema.String)).pipe(
     Schema.fromKey("next_page_token")

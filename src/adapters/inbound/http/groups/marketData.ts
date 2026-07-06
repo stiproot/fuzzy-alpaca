@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
 import { Schema } from "effect"
-import { TickerSymbol } from "../../../../domain/primitives.js"
+import { SymbolFromPath } from "../../../../domain/primitives.js"
 import { BarsPage, BarsQuery, Quote, Snapshot, Trade } from "../../../../domain/schemas/market-data.js"
 import {
   AssetNotFoundT,
@@ -13,7 +13,7 @@ import {
 } from "../envelope.js"
 import { Authorization } from "../middleware/auth.js"
 
-const symbolPath = Schema.Struct({ symbol: TickerSymbol })
+const symbolPath = Schema.Struct({ symbol: SymbolFromPath })
 
 export const marketDataGroup = HttpApiGroup.make("marketData")
   .add(

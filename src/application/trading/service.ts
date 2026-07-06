@@ -13,7 +13,7 @@ import {
   type PdtRuleViolation,
   type PositionNotFound,
 } from "../../domain/errors.js"
-import { ClientOrderId, OrderId, type TickerSymbol, type TradingMode } from "../../domain/primitives.js"
+import { ClientOrderId, OrderId, type AnySymbol, type TradingMode } from "../../domain/primitives.js"
 import type {
   CreateOrderRequest,
   ListOrdersQuery,
@@ -63,7 +63,7 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
     const assetCache = yield* Cache.make({
       capacity: 1024,
       timeToLive: "5 minutes",
-      lookup: (symbol: TickerSymbol) => broker.getAsset(symbol),
+      lookup: (symbol: AnySymbol) => broker.getAsset(symbol),
     })
 
     const audit = (action: string, fields: Record<string, unknown>) =>
@@ -100,7 +100,7 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
     }
 
     const checkTradable = (
-      symbol: TickerSymbol
+      symbol: AnySymbol
     ): Effect.Effect<void, AlpacaError | AssetNotFound | AssetNotTradable> =>
       assetCache.get(symbol).pipe(
         Effect.flatMap(
@@ -339,7 +339,7 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
     const isPositiveDecimal = (s: string) => /^\d+(\.\d+)?$/.test(s) && Number(s) > 0
 
     const closePosition = (
-      symbol: TickerSymbol,
+      symbol: AnySymbol,
       query: ClosePositionQuery
     ): Effect.Effect<
       OrderResponse,
@@ -392,7 +392,7 @@ export class TradingService extends Effect.Service<TradingService>()("TradingSer
       replaceOrder,
       listPositions: (): Effect.Effect<ReadonlyArray<Position>, AlpacaError> =>
         broker.getPositions(),
-      getPosition: (symbol: TickerSymbol): Effect.Effect<Option.Option<Position>, AlpacaError> =>
+      getPosition: (symbol: AnySymbol): Effect.Effect<Option.Option<Position>, AlpacaError> =>
         broker.getPosition(symbol),
       closePosition,
       // Fast health probe: 2s budget, never fails — degraded on any problem.

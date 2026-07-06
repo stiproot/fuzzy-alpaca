@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
 import { Schema } from "effect"
-import { TickerSymbol } from "../../../../domain/primitives.js"
+import { SymbolFromPath } from "../../../../domain/primitives.js"
 import { Asset, AssetPage, ListAssetsQuery } from "../../../../domain/schemas/asset.js"
 import { CalendarDay, CalendarQuery } from "../../../../domain/schemas/calendar.js"
 import {
@@ -28,7 +28,7 @@ export const assetsGroup = HttpApiGroup.make("assets")
   )
   .add(
     HttpApiEndpoint.get("getAsset", "/v1/assets/:symbol")
-      .setPath(Schema.Struct({ symbol: TickerSymbol }))
+      .setPath(Schema.Struct({ symbol: SymbolFromPath }))
       .addSuccess(Asset)
       .addError(AssetNotFoundT)
       .addError(ValidationErrorT)

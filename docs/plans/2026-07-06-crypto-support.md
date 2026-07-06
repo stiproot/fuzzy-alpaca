@@ -9,7 +9,7 @@ behind a new adapter). Facts below were verified against Alpaca docs/OpenAPI spe
 
 | Milestone | Status | Notes |
 |---|---|---|
-| 1. Symbol model + class-aware domain | ⬜ not started | |
+| 1. Symbol model + class-aware domain | ✅ done (2026-07-06) | Equity suite green unchanged; 11 new tests |
 | 2. Adapter: normalizations + crypto data seam + test broker | ⬜ not started | |
 | 3. Service/HTTP + live crypto lifecycle verify | ⬜ not started | |
 | 4. Docs extraction + wrap-up | ⬜ not started | |

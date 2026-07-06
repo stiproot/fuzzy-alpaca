@@ -1,6 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup } from "@effect/platform"
 import { Schema } from "effect"
-import { TickerSymbol } from "../../../../domain/primitives.js"
+import { SymbolFromPath } from "../../../../domain/primitives.js"
 import { OrderResponse } from "../../../../domain/schemas/order.js"
 import { ClosePositionQuery, Position } from "../../../../domain/schemas/position.js"
 import {
@@ -16,7 +16,7 @@ import {
 } from "../envelope.js"
 import { Authorization } from "../middleware/auth.js"
 
-const symbolPath = Schema.Struct({ symbol: TickerSymbol })
+const symbolPath = Schema.Struct({ symbol: SymbolFromPath })
 
 export const positionsGroup = HttpApiGroup.make("positions")
   .add(

@@ -1,6 +1,6 @@
 import { Effect, Option } from "effect"
 import type { AlpacaError, AssetNotFound } from "../../domain/errors.js"
-import type { TickerSymbol } from "../../domain/primitives.js"
+import type { AnySymbol } from "../../domain/primitives.js"
 import type { Asset, AssetPage, ListAssetsQuery } from "../../domain/schemas/asset.js"
 import type { CalendarDay, CalendarQuery } from "../../domain/schemas/calendar.js"
 import type { BarsPage, BarsQuery, Quote, Snapshot, Trade } from "../../domain/schemas/market-data.js"
@@ -11,17 +11,17 @@ export class MarketDataService extends Effect.Service<MarketDataService>()("Mark
     const broker = yield* AlpacaClient
 
     return {
-      getQuote: (symbol: TickerSymbol): Effect.Effect<Quote, AlpacaError | AssetNotFound> =>
+      getQuote: (symbol: AnySymbol): Effect.Effect<Quote, AlpacaError | AssetNotFound> =>
         broker.getLatestQuote(symbol),
 
-      getTrade: (symbol: TickerSymbol): Effect.Effect<Trade, AlpacaError | AssetNotFound> =>
+      getTrade: (symbol: AnySymbol): Effect.Effect<Trade, AlpacaError | AssetNotFound> =>
         broker.getLatestTrade(symbol),
 
-      getSnapshot: (symbol: TickerSymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
+      getSnapshot: (symbol: AnySymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
         broker.getSnapshot(symbol),
 
       getBars: (
-        symbol: TickerSymbol,
+        symbol: AnySymbol,
         query: BarsQuery
       ): Effect.Effect<BarsPage, AlpacaError | AssetNotFound> =>
         broker.getBars(symbol, {
@@ -49,7 +49,7 @@ export class MarketDataService extends Effect.Service<MarketDataService>()("Mark
           Effect.withSpan("marketData.listAssets")
         ),
 
-      getAsset: (symbol: TickerSymbol): Effect.Effect<Option.Option<Asset>, AlpacaError> =>
+      getAsset: (symbol: AnySymbol): Effect.Effect<Option.Option<Asset>, AlpacaError> =>
         broker.getAsset(symbol),
 
       getCalendar: (query: CalendarQuery): Effect.Effect<ReadonlyArray<CalendarDay>, AlpacaError> =>

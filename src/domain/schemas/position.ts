@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { DecimalString, MoneyString, TickerSymbol } from "../primitives.js"
+import { AnySymbol, DecimalString, MoneyString } from "../primitives.js"
 
 export const PositionSide = Schema.Literal("long", "short")
 
@@ -7,7 +7,7 @@ export const PositionSide = Schema.Literal("long", "short")
 // the wire in edge states (fresh positions, halted symbols), hence Options.
 export const Position = Schema.Struct({
   assetId: Schema.String,
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   exchange: Schema.String,
   assetClass: Schema.String,
   side: PositionSide,
@@ -34,7 +34,7 @@ const optionalWire = <A, I, R>(schema: Schema.Schema<A, I, R>, wireKey: string) 
 
 export const PositionFromWire = Schema.Struct({
   assetId: fromWire(Schema.String, "asset_id"),
-  symbol: TickerSymbol,
+  symbol: AnySymbol,
   exchange: Schema.String,
   assetClass: fromWire(Schema.String, "asset_class"),
   side: PositionSide,
