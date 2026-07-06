@@ -11,8 +11,19 @@ behind a new adapter). Facts below were verified against Alpaca docs/OpenAPI spe
 |---|---|---|
 | 1. Symbol model + class-aware domain | ✅ done (2026-07-06) | Equity suite green unchanged; 11 new tests |
 | 2. Adapter: normalizations + crypto data seam + test broker | ✅ done (2026-07-06) | 69 tests green; per-symbol envelope unwrap unit-tested |
-| 3. Service/HTTP + live crypto lifecycle verify | ⬜ not started | |
+| 3. Service/HTTP + live crypto lifecycle verify | ✅ done (2026-07-06) | Live: buy 0.0002 BTC → filled @63012 → position BTC/USD (fee-reduced qty 0.0001995) → full close → gone. Also live-verified the M5-deferred close path |
 | 4. Docs extraction + wrap-up | ⬜ not started | |
+
+## Deltas from plan
+
+- **Paper crypto orders need ≥$10 cost basis** (403 code 40310000, "cost basis must be >= minimal
+  amount of order 10") — stricter than the documented ~$1 `min_order_size`. The smoke buys
+  0.0002 BTC (~$13). The error map now routes 403+40310000 business rejections to
+  `ValidationError` instead of `InternalError`.
+- **Alpaca dropped the PDT-era account fields** (`daytrading_buying_power`,
+  `pattern_day_trader`, `daytrade_count`) — the contract guard caught it live (post-June-2026
+  intraday margin framework). They are now optional Options in the account schema.
+- Fees confirmed live: buying 0.0002 BTC credited 0.0001995 to the position.
 
 ## Verified Alpaca crypto facts (drive the design)
 

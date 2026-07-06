@@ -79,6 +79,14 @@ export const mapSdkError =
           ...(data.code !== undefined ? { alpacaCode: data.code } : {}),
         })
       }
+      // 40310000 is Alpaca's business-rejection code (e.g. "cost basis must
+      // be >= minimal amount of order 10") — a caller problem, not ours.
+      if (data.code === 40310000) {
+        return new ValidationError({
+          message: `Alpaca rejected ${op}: ${message}`,
+          details: { alpacaCode: data.code },
+        })
+      }
       return new InternalError({ message: `Alpaca rejected ${op} (403): ${message}` })
     }
     if (status === 401) {

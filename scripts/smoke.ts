@@ -4,7 +4,7 @@ import { AlpacaClientLive } from "../src/adapters/outbound/alpaca/live.js"
 import { MarketDataService } from "../src/application/market-data/service.js"
 import { TradingService } from "../src/application/trading/service.js"
 import { AppConfig } from "../src/config.js"
-import { TickerSymbol } from "../src/domain/primitives.js"
+import { AnySymbol, TickerSymbol } from "../src/domain/primitives.js"
 import { CreateOrderRequest, ReplaceOrderRequest } from "../src/domain/schemas/order.js"
 import { AlpacaClient } from "../src/ports/broker.js"
 
@@ -136,6 +136,94 @@ const program = Effect.gen(function* () {
 
   const canceled = yield* trading.cancelOrder(cancelTarget)
   yield* Effect.logInfo("canceled", { orderId: canceled.orderId, status: canceled.status })
+
+  // ---- Crypto: 24/7, so the FULL lifecycle is live-verifiable any day ----
+  const btc = yield* Schema.decodeUnknown(AnySymbol)("BTC/USD")
+
+  const cryptoAsset = yield* marketData.getAsset(btc)
+  yield* Effect.logInfo("crypto asset", {
+    found: Option.isSome(cryptoAsset),
+    minOrderSize: Option.isSome(cryptoAsset) ? cryptoAsset.value.minOrderSize : null,
+  })
+
+  const cryptoSnap = yield* marketData.getSnapshot(btc)
+  yield* Effect.logInfo("crypto snapshot", {
+    lastPrice: Option.map(cryptoSnap.latestTrade, (t) => t.price),
+  })
+
+  const cryptoBars = yield* marketData.getBars(btc, { timeframe: "1Min", limit: 3, start: "2026-07-05" })
+  const cryptoBars2 =
+    cryptoBars.nextPageToken !== undefined
+      ? yield* marketData.getBars(btc, {
+          timeframe: "1Min",
+          limit: 3,
+          start: "2026-07-05",
+          pageToken: cryptoBars.nextPageToken,
+        })
+      : undefined
+  yield* Effect.logInfo("crypto bars", {
+    page1: cryptoBars.items.length,
+    hadToken: cryptoBars.nextPageToken !== undefined,
+    page2: cryptoBars2?.items.length ?? 0,
+  })
+
+  const existingBtc = yield* trading.getPosition(btc)
+  if (Option.isSome(existingBtc)) {
+    yield* Effect.logWarning("existing BTC position found — skipping lifecycle to avoid touching real holdings", {
+      qty: existingBtc.value.qty,
+    })
+  } else {
+    const cryptoOrder = yield* Schema.decodeUnknown(CreateOrderRequest)({
+      symbol: "BTC/USD",
+      side: "buy",
+      type: "market",
+      timeInForce: "gtc",
+      // paper crypto orders require ≥$10 cost basis; 0.0002 BTC ≈ $13
+      qty: "0.0002",
+      clientOrderId: `smoke-crypto-${process.env["SMOKE_RUN_ID"] ?? Date.now()}`,
+    })
+    const cryptoPlaced = yield* trading.placeOrder(cryptoOrder)
+    yield* Effect.logInfo("crypto order placed", {
+      orderId: cryptoPlaced.orderId,
+      status: cryptoPlaced.status,
+    })
+
+    // market crypto orders fill in seconds
+    let filled = false
+    for (let attempt = 0; attempt < 10 && !filled; attempt++) {
+      yield* Effect.sleep("1 second")
+      const current = yield* trading.getOrderFlexible(cryptoPlaced.orderId, false)
+      filled = current.status === "filled"
+      if (filled) {
+        yield* Effect.logInfo("crypto order filled", {
+          filledQty: current.filledQty,
+          filledAvgPrice: Option.getOrNull(current.filledAvgPrice),
+        })
+      }
+    }
+    if (!filled) {
+      yield* Effect.logWarning("crypto order not filled within 10s — canceling and skipping close")
+      yield* trading.cancelOrder(cryptoPlaced.orderId as never).pipe(Effect.ignore)
+    } else {
+      const btcPosition = yield* trading.getPosition(btc)
+      yield* Effect.logInfo("crypto position", {
+        present: Option.isSome(btcPosition),
+        qty: Option.isSome(btcPosition) ? btcPosition.value.qty : null,
+        symbol: Option.isSome(btcPosition) ? btcPosition.value.symbol : null,
+      })
+
+      const liquidation = yield* trading.closePosition(btc, {})
+      yield* Effect.logInfo("crypto position closed", {
+        liquidationOrderId: liquidation.orderId,
+        side: liquidation.side,
+        status: liquidation.status,
+      })
+
+      yield* Effect.sleep("2 seconds")
+      const after = yield* trading.getPosition(btc)
+      yield* Effect.logInfo("crypto position after close", { gone: Option.isNone(after) })
+    }
+  }
 
   yield* Effect.logInfo("SMOKE OK")
 })

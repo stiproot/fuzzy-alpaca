@@ -47,6 +47,12 @@ describe("mapSdkError", () => {
     expect(e._tag).toBe("PdtRuleViolation")
   })
 
+  it("403 business rejection (40310000) → ValidationError", () => {
+    const e = map(axiosish(403, { code: 40310000, message: "cost basis must be >= minimal amount of order 10" }))
+    expect(e._tag).toBe("ValidationError")
+    expect((e as any).details).toEqual({ alpacaCode: 40310000 })
+  })
+
   it("other 403 → InternalError", () => {
     expect(map(axiosish(403, { message: "forbidden" }))._tag).toBe("InternalError")
   })

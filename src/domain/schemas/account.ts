@@ -9,15 +9,18 @@ export const Account = Schema.Struct({
   currency: Schema.String,
   buyingPower: MoneyString,
   regtBuyingPower: MoneyString,
-  daytradingBuyingPower: MoneyString,
+  // Absent on accounts under Alpaca's post-PDT intraday margin framework
+  daytradingBuyingPower: Schema.optionalWith(MoneyString, { as: "Option", nullable: true }),
   cash: MoneyString,
   equity: MoneyString,
   lastEquity: MoneyString,
   longMarketValue: MoneyString,
   shortMarketValue: MoneyString,
   multiplier: Schema.String,
-  patternDayTrader: Schema.Boolean,
-  daytradeCount: Schema.Number,
+  // PDT-era fields, absent on accounts under the post-June-2026 intraday
+  // margin framework
+  patternDayTrader: Schema.optionalWith(Schema.Boolean, { as: "Option", nullable: true }),
+  daytradeCount: Schema.optionalWith(Schema.Number, { as: "Option", nullable: true }),
   shortingEnabled: Schema.Boolean,
   tradingBlocked: Schema.Boolean,
   transfersBlocked: Schema.Boolean,
@@ -38,15 +41,21 @@ export const AccountFromWire = Schema.Struct({
   currency: Schema.String,
   buyingPower: fromWire(MoneyString, "buying_power"),
   regtBuyingPower: fromWire(MoneyString, "regt_buying_power"),
-  daytradingBuyingPower: fromWire(MoneyString, "daytrading_buying_power"),
+  daytradingBuyingPower: Schema.optionalWith(MoneyString, { as: "Option", nullable: true }).pipe(
+    Schema.fromKey("daytrading_buying_power")
+  ),
   cash: MoneyString,
   equity: MoneyString,
   lastEquity: fromWire(MoneyString, "last_equity"),
   longMarketValue: fromWire(MoneyString, "long_market_value"),
   shortMarketValue: fromWire(MoneyString, "short_market_value"),
   multiplier: Schema.String,
-  patternDayTrader: fromWire(Schema.Boolean, "pattern_day_trader"),
-  daytradeCount: fromWire(Schema.Number, "daytrade_count"),
+  patternDayTrader: Schema.optionalWith(Schema.Boolean, { as: "Option", nullable: true }).pipe(
+    Schema.fromKey("pattern_day_trader")
+  ),
+  daytradeCount: Schema.optionalWith(Schema.Number, { as: "Option", nullable: true }).pipe(
+    Schema.fromKey("daytrade_count")
+  ),
   shortingEnabled: fromWire(Schema.Boolean, "shorting_enabled"),
   tradingBlocked: fromWire(Schema.Boolean, "trading_blocked"),
   transfersBlocked: fromWire(Schema.Boolean, "transfers_blocked"),
