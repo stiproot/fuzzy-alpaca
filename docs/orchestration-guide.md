@@ -6,9 +6,10 @@ like it consume APIs like ours, what state they should persist and where, and wh
 intelligence layer should take. Companion docs: [architecture.md](architecture.md) (what this
 service guarantees), [concepts/trading-basics.md](concepts/trading-basics.md) (domain language).
 
-> Currency note (written 2026-07): OSS project assessments reflect knowledge through early 2026.
-> Before adopting any specific library, re-verify it is maintained; the *categories and roles*
-> below change far more slowly than the projects filling them.
+> Currency note (written 2026-07, project claims web-verified 2026-07): OSS assessments were
+> checked against current repos/releases at time of writing. Maintenance shifts fast — re-verify
+> before adopting any specific library — but the *categories and roles* below change far more
+> slowly than the projects filling them. Reference papers/tools are cited inline.
 
 ---
 
@@ -22,10 +23,15 @@ box**, not a web page:
 - **Codegen from `openapi.json`** — the CI-published spec is the source of truth. Generate a
   typed client (or LLM tool definitions) from it; never hand-write request shapes. Every schema
   is strict, so a drifting client fails fast at our 400 rather than corrupting an order.
-- **Tools for LLM agents** — the modern pattern is to wrap each endpoint (or a curated subset)
-  as a tool: either OpenAPI→tool-definition generation, or an **MCP server** fronting the API so
-  any MCP-capable agent can call it. Curate rather than exposing everything: an analysis agent
-  gets read-only market-data tools; only the execution step gets `POST /v1/orders`.
+- **Tools for LLM agents** — the mainstream pattern (mid-2026) is an **MCP server** fronting the
+  API so any MCP-capable agent can call it; MCP has largely absorbed the older per-framework
+  "OpenAPI toolkit" converters, so LangGraph / CrewAI / AG2 / Dapr Agents (GA v1.0) mostly consume
+  tools *via* MCP rather than shipping their own. Two concrete starting points: **FastMCP**
+  (Python, generates a full MCP server from an OpenAPI spec in a few lines — the self-hosted
+  route) or a managed generator like **Speakeasy/Gram** (typed SDK + hosted MCP with explicit
+  operation curation). Google ADK's `OpenAPIToolset` is the notable framework-native non-MCP
+  converter still maintained. Curate rather than exposing everything: an analysis agent gets
+  read-only market-data tools; only the execution step gets `POST /v1/orders`.
 - **Error codes are branch points** — every non-2xx is `{ error: { code, retryable, ... } }`.
   The orchestrator's retry policy should be *mechanical*: `retryable: true` → backoff and retry
   (honoring `details.retryAfterSeconds` on 429); `retryable: false` → do not retry, route to a
@@ -41,14 +47,19 @@ Workflows, LangGraph with checkpointing) treats it the same way:
 - **Idempotency key = deterministic step identity.** Derive `clientOrderId` from
   `{workflowInstanceId}-{stepName}` (≤48 chars). A replayed/retried workflow step then *cannot*
   double-order: this API returns the existing order with `idempotentReplay: true`. This is the
-  single most important integration rule.
+  single most important integration rule. It is category-wide, not framework-specific: Temporal
+  recommends exactly `"${workflowRunId}-${activityId}"`, Dapr Workflows assumes at-least-once
+  activities, and newer durable-execution engines (Inngest, Restate) key idempotency off a stable
+  event identity for the same reason — derive from a stable identity, never a fresh UUID.
 - **On retryable 503 from `POST /v1/orders`**: re-send the *same* `clientOrderId` (the response
   message says exactly this). The server has already reconciled whether the first attempt
   landed; the agent never has to guess.
 - **Fills are polled, not pushed** (no webhooks in the MVP): after placing, poll
   `GET /v1/orders/:id` with expanding intervals (1s, 2s, 5s, then per-minute for resting limit
   orders). Market crypto orders fill in seconds; resting equity limits can take hours — park
-  them and poll on a schedule rather than holding a workflow open hot.
+  them and poll on a schedule rather than holding a workflow open hot. If a future version pushes
+  fills via webhook, keep the poll as a reconciliation backstop (demoted, not deleted) — webhook
+  delivery is best-effort and unordered; the hybrid is the current best practice.
 - **Compensation (saga) pattern**: the compensating action for an unwanted fill is a closing
   order, not a cancel — model "undo" explicitly in the workflow, and confirm cancel results by
   reading the returned order status (cancel of an already-filled order 409s).
@@ -151,24 +162,30 @@ the intelligence layer is actually adding value (join decisions → orders → r
 
 Shape: **three tiers with a hard boundary between "thinking" and "acting"**. LLM agents
 upstream, deterministic math in the middle, and this API at the bottom behind guardrails. The
-consistent practitioner finding (through early 2026) is that LLMs add value in *research
-synthesis, regime interpretation, and anomaly explanation* — and underperform classical quant
-at *systematic signal generation, position sizing, and execution*. Architect accordingly: the
-LLM proposes and explains; the math disposes; the workflow executes.
+consistent finding across 2025–26 literature and practitioner writing is that LLMs add value in
+*research synthesis, regime interpretation, and anomaly explanation* — and do **not** generate
+alpha at *systematic signal generation, position sizing, and execution*, where classical quant
+and traditional ML remain superior. Reported "LLM beats the market" results repeatedly collapse
+under information-leakage control and realistic transaction-cost modeling (e.g. arXiv 2510.07920
+"Profit Mirage"; arXiv 2505.07078, beaten by ARIMA; the arXiv 2605.19337 survey of 77 studies).
+Architect accordingly: the LLM proposes and explains; the math disposes; the workflow executes.
 
 ### Tier 1 — Signals (classical quant, OSS)
 
 Deterministic, backtestable signal generation over cached bars:
 
-| Role | OSS candidates (verify liveness before adopting) | Notes |
+Project status verified 2026-07; re-verify before adopting, as maintenance shifts fast (the
+original `pandas-ta` repo, e.g., disappeared in 2025).
+
+| Role | OSS candidates | Notes |
 |---|---|---|
-| Technical features | TA-Lib (C lib, stable); pandas-ta or successors | Momentum, RSI, ATR, moving averages — the vocabulary of tier-1 signals |
-| Quant ML platform | Microsoft **Qlib** | Factor/ML pipelines, mature; heavyweight but proven |
-| RL for trading | **FinRL** | Academic-strength; treat live use skeptically, good for research |
-| Vectorized backtesting | **vectorbt** | Fast research iteration over the Postgres bars |
-| Event-driven backtest/live parity | **nautilus_trader**, QuantConnect **Lean** | Same code backtest→live; heavier adoption cost |
-| TS foundation models | Amazon **Chronos**, Google **TimesFM**, Salesforce **Moirai** | Zero-shot forecasters; honest take: weak edge on raw prices, more useful for **volatility/volume** forecasts feeding the risk tier |
-| Sentiment | **FinBERT** (cheap, reliable classifier); FinGPT-class models | Feed news/social scores as a *feature*, not a trade trigger |
+| Technical features | **TA-Lib** (C lib + Cython wrapper, v0.7, stable, BSD); **pandas-ta-classic** (`xgboosted/pandas-ta-classic`) | Momentum, RSI, ATR, moving averages — the vocabulary of tier-1 signals. Use the `-classic` fork; the original `pandas-ta` went paid/dark in 2025 |
+| Quant ML platform | Microsoft **Qlib** (44k★, active) | Factor/ML pipelines, mature; heavyweight but proven. Microsoft **RD-Agent** layers LLM factor-mining on top (bridges tier 1↔3) |
+| RL for trading | **FinRL** (+ newer **FinRL-X/-Trading**) | Academic-strength; treat live use skeptically, good for research |
+| Vectorized backtesting | **vectorbt** (open, v1.1) | Fast research iteration over the Postgres bars. **vectorbt.pro** is the paid, fuller option (fair-code) |
+| Event-driven backtest/live parity | **nautilus_trader** (LGPL, monthly), QuantConnect **Lean** (Apache) | Same code backtest→live; heavier adoption cost |
+| TS foundation models | Amazon **Chronos-2**, Google **TimesFM 2.5**, Salesforce **Moirai 2.0** (+ **Lag-Llama**, uncertainty-first) | Zero-shot forecasters; honest take: weak edge on raw prices, more useful for **volatility/volume** forecasts feeding the risk tier |
+| Sentiment | **FinBERT** (cheap, reliable classifier — still the 2026 baseline); FinGPT-class models | Feed news/social scores as a *feature*, not a trade trigger |
 
 Signals are pure functions: `bars + features → score per symbol`. They run on the state store,
 not against the API.
@@ -181,10 +198,15 @@ The math that turns scores into orders. This tier is non-negotiable code, not ag
   error) or **volatility targeting** (size ∝ target-vol / realized-vol) with a
   **fixed-fractional cap** (risk ≤ 1–2% of equity per position via ATR-based stop distance).
 - **Portfolio constraints:** max positions, per-symbol and per-sector exposure caps,
-  correlation-aware concentration limits. Libraries: riskfolio-lib / PyPortfolioOpt-lineage /
-  skfolio for allocation; empyrical-style metrics for monitoring.
+  correlation-aware concentration limits. Libraries (all active mid-2026): **skfolio**
+  (sklearn-style, most actively developed), **riskfolio-lib**, **PyPortfolioOpt** (revived under
+  the `PyPortfolio` org, v1.6); **empyrical-reloaded** (`stefan-jansen`, lightly maintained) for
+  metrics.
 - **Drawdown governor:** halt new entries at X% peak-to-trough (e.g. 10%), flatten at Y%
-  (e.g. 15%). This is the one control that saves an automated book.
+  (e.g. 15%). This is the one control that saves an automated book. In practice a *tiered*
+  governor is stronger than a single halt/flatten pair (e.g. cut size 50% at 5%, again at 10%,
+  flatten at 15%); the **Triple Penance Rule** (Bailey & López de Prado) is a rigorous
+  alternative — reassess when time-to-recovery exceeds ~3× the drawdown's formation period.
 - **Regime filter:** a simple trend/chop/vol-state classifier (moving-average slope + realized
   vol bucket is enough to start) that switches strategies on/off. LLMs may *propose* a regime
   read; the filter that gates orders is computed.
@@ -198,9 +220,13 @@ Where agents genuinely earn their place:
 
 - **Research synthesis:** digest filings/news/sentiment into a structured thesis per symbol,
   written to the decision journal. (The multi-agent "analyst / bull / bear / risk / trader"
-  debate structure from the TradingAgents line of work is a reusable *role design* even if you
-  adopt none of the framework code — its measurable value is in forcing an adversarial review
-  before a proposal survives. Verify the current state of these frameworks before borrowing.)
+  debate structure from **TradingAgents** — now a large project, ~91k★ — and the paper-stage
+  FinMem / FINCON / FinAgent / FinRobot line is a reusable *role design* even if you adopt none
+  of the framework code: its value is in forcing an adversarial review before a proposal
+  survives. **Borrow the role design, not the reported returns** — a 2026 re-evaluation audit
+  (arXiv 2603.27539) found these systems mostly fail reproducibility, with one framework's
+  reported +23% return flipping to −22% under controlled testing. Treat them as prompt/structure
+  references only.)
 - **Regime narration & anomaly triage:** explain *why* the regime filter flipped, interpret a
   spike, decide whether an unexpected 422 pattern means an assumption broke.
 - **Strategy proposal, not strategy execution:** an agent may propose "momentum on, mean-revert
@@ -219,17 +245,35 @@ Where agents genuinely earn their place:
 6. Human approval gate for: going live, raising caps, first N live trades of any new strategy.
 7. Never trade on a cached account/position read.
 
+These four control types — allowlist/permission, approval gate, rate-and-scope (spend) limiter,
+and kill switch — are now being formalized as named patterns (e.g. Stanford CodeX's AILCCP
+controls catalog, building on the UC Berkeley Agentic AI Risk Profile). Guardrail practice for
+agent-initiated actions is still emerging rather than settled, so treat these as an engineering
+baseline to own yourself, not a box a framework ticks for you.
+
 ---
 
 ## 5. Validation pipeline (how a strategy earns capital)
 
 ```
 backtest (vectorbt over Postgres bars, incl. fees/slippage)
-  → walk-forward / out-of-sample (guard against overfit; distrust in-sample Sharpe)
+  → walk-forward / out-of-sample (the gold standard; distrust in-sample Sharpe)
     → paper trading via this API, tradingMode=paper (weeks, not days; crypto compresses this)
       → limited live capital under tight caps (canary)
         → scale only on journal evidence (realized vs backtested edge within tolerance)
 ```
+
+Overfitting guards worth building in from the start:
+
+- **Deflated Sharpe Ratio** (Bailey & López de Prado) — corrects the observed Sharpe for how many
+  strategy variants you trialed, non-normal returns, and sample length; a raw Sharpe from a
+  parameter sweep is nearly meaningless without it.
+- **Minimum Backtest Length** (same authors) — the required OOS window scales with the number of
+  configurations tried: more variants demand more history before a nonzero Sharpe is trustworthy.
+- **Realistic slippage** — flat basis-point slippage is a known-insufficient starting point; the
+  standard upgrade is square-root / volume-weighted market impact (∝ √(order size / ADV)) plus a
+  participation cap (~5–10% of ADV). A 1.5-Sharpe frictionless strategy can fall below 0.5 under
+  honest fill modeling. (Crypto's fee hurdle from §4 is the analogous friction there.)
 
 Paper trading through this exact API (same contract, same errors, same fills semantics) is the
 orchestra's rehearsal room — the MVP was deliberately built paper-first for this reason. The
