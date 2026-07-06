@@ -1,5 +1,11 @@
 # Crypto trading support
 
+> **Historical plan document — task completed 2026-07-06.** Durable context extracted to
+> [docs/architecture.md](../architecture.md) (symbol model, crypto data seam),
+> [README.md](../../README.md) (crypto usage notes), and
+> [docs/concepts/trading-basics.md](../concepts/trading-basics.md) (crypto differences).
+> Do not treat this file as current documentation.
+
 Add Alpaca spot-crypto trading and market data to fuzzy-alpaca-core. FX was considered and
 dropped (Alpaca has no forex asset class; a future FX integration would be a separate provider
 behind a new adapter). Facts below were verified against Alpaca docs/OpenAPI specs and live
@@ -12,7 +18,7 @@ behind a new adapter). Facts below were verified against Alpaca docs/OpenAPI spe
 | 1. Symbol model + class-aware domain | ✅ done (2026-07-06) | Equity suite green unchanged; 11 new tests |
 | 2. Adapter: normalizations + crypto data seam + test broker | ✅ done (2026-07-06) | 69 tests green; per-symbol envelope unwrap unit-tested |
 | 3. Service/HTTP + live crypto lifecycle verify | ✅ done (2026-07-06) | Live: buy 0.0002 BTC → filled @63012 → position BTC/USD (fee-reduced qty 0.0001995) → full close → gone. Also live-verified the M5-deferred close path |
-| 4. Docs extraction + wrap-up | ⬜ not started | |
+| 4. Docs extraction + wrap-up | ✅ done (2026-07-06) | |
 
 ## Deltas from plan
 

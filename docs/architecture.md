@@ -10,8 +10,10 @@ orchestrator whose AI agents place/manage trades and gather market data. Everyth
 that: strict schema validation in, predictable JSON out, a closed typed error enum with an
 explicit `retryable` flag, and a generated OpenAPI artifact the orchestrator codegens against.
 
-Out of scope (deliberately, with seams left): streaming/websockets, options/crypto/OTC,
-multi-account, bracket/OCO order classes, portfolio analytics, user management.
+Covers US equities **and spot crypto** (added 2026-07-06 — see the symbol model below). Out of
+scope (deliberately, with seams left): streaming/websockets, options/OTC, FX (Alpaca has no forex
+asset class; would be a second provider adapter), multi-account, bracket/OCO order classes,
+portfolio analytics, user management.
 
 ## Hexagonal layout
 
@@ -77,10 +79,31 @@ table (429 with Retry-After capture, 5xx, buying-power/PDT 403s, SIP-subscriptio
 - Paper trading is the default; live requires both live keys and `ALPACA_LIVE=true`.
 - Every mutation emits a structured `order.audit` log record (asserted in tests).
 
+## Symbol model (equities + crypto)
+
+Two disjoint branded symbol types union into `AnySymbol`: `TickerSymbol` (`AAPL`, `BRK.B`,
+`BRK-B`) and `CryptoSymbol` (canonical slash pair, `BTC/USD`). URL paths can't carry `/`, so
+paths accept the dash form (`BTC-USD`); `SymbolFromPath` maps dash→slash only when the suffix is
+a known quote currency (`USDT|USDC|USD|BTC`, longest first), so dashed equities stay equities.
+Response bodies always carry the canonical form.
+
+Alpaca is inconsistent about crypto symbols on the wire; all translation lives in the adapter:
+order bodies/data APIs use `BTC/USD`, trading-API *paths* use the legacy slashless form
+(`/v2/positions/BTCUSD`, URL-encoded slash for non-USD quotes), and position wire symbols arrive
+slashless and are normalized back to canonical via quote-currency suffix matching.
+
+Crypto trading rules are enforced client-side in `CreateOrderRequest` (types
+market/limit/stop_limit, TIF gtc/ioc, no `extendedHours`, no shorting/margin on Alpaca). Crypto
+assets carry sizing constraints (`minOrderSize`, `minTradeIncrement`, `priceIncrement`); note
+Alpaca's paper API rejects crypto orders under **$10 cost basis** (403 code 40310000 →
+`ValidationError`). Fees are taken from the credited asset — a buy of qty X credits slightly
+less than X to the position. The clock/calendar endpoints govern equities only; crypto trades
+24/7.
+
 ## Domain model conventions
 
-- Branded primitives (`TickerSymbol`, `OrderId`, `ClientOrderId`, `MoneyString`, …); enums as
-  `Schema.Literal` unions matching Alpaca's snake_case values.
+- Branded primitives (`TickerSymbol`, `CryptoSymbol`, `OrderId`, `ClientOrderId`, `MoneyString`,
+  …); enums as `Schema.Literal` unions matching Alpaca's snake_case values.
 - Trading-API money stays **validated decimal strings end-to-end** — never floats. Market-data
   prices are JSON numbers (Alpaca data-API format; informational, not transactional).
 - Two schemas per resource: a **wire decode schema** (snake_case/short keys, renamed via
@@ -121,10 +144,16 @@ but never crosses HTTP.
 
 ## Market data seam
 
-All market-data reads (quote/trade/snapshot/bars) bypass the SDK and call
-`data.alpaca.markets/v2/stocks` directly via `@effect/platform` HttpClient — the SDK's bars
-iterator swallows the page token and its entity remapping is undocumented. Same pipelines, same
-error map; data-API 404s become `AssetNotFound`.
+All market-data reads (quote/trade/snapshot/bars) bypass the SDK and go direct-REST via
+`@effect/platform` HttpClient — the SDK's bars iterator swallows the page token and its entity
+remapping is undocumented. Same pipelines, same error map. Two upstreams, routed by symbol class
+inside the adapter:
+
+- **Stocks** — `data.alpaca.markets/v2/stocks/{symbol}/…`; 404s become `AssetNotFound`.
+- **Crypto** — `data.alpaca.markets/v1beta3/crypto/us/…` with a `symbols=` query param;
+  responses nest per symbol (`{ "quotes": { "BTC/USD": {…} } }`) and unknown symbols are
+  *silently omitted* — the adapter maps a missing key to `AssetNotFound`. Bars carry a top-level
+  `next_page_token` that is explicitly `null` when exhausted. No data subscription required.
 
 ## Testing strategy
 

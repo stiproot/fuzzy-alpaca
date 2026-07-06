@@ -108,12 +108,14 @@ are normal.
 
 ## The PDT rule (pattern day trader)
 
-A **day trade** is buying and selling the same stock within one day. US rules flag accounts that
-make 4+ day trades in 5 business days as **pattern day traders**, and if such an account holds
-under $25,000 equity it gets blocked from further day trading. The account report includes
-`patternDayTrader` and `daytradeCount` so you can stay clear of the line.
+A **day trade** is buying and selling the same stock within one day. US rules historically
+flagged accounts making 4+ day trades in 5 business days as **pattern day traders**, blocking
+further day trading under $25,000 equity. FINRA retired this rule in mid-2026 (brokers moved to
+intraday-margin limits instead), so the account fields `patternDayTrader` / `daytradeCount` may
+be absent on newer accounts. Crypto never had the rule.
 
-> In our API: violations surface as the `PdtRuleViolation` error (422).
+> In our API: those account fields are optional; a broker-side violation on an older account
+> still surfaces as the `PdtRuleViolation` error (422).
 
 ## Paper vs live trading
 
@@ -137,3 +139,20 @@ response says which mode it ran in (`tradingMode`).
 | Shortable | Whether the broker will let you short this asset |
 | Fractionable | Whether you can buy fractions of a share |
 | Halted | Trading in the asset is temporarily suspended |
+
+## Crypto: what's different
+
+Crypto trading reuses almost everything above, with a few twists:
+
+- **Symbols are pairs** — `BTC/USD` means "Bitcoin priced in US dollars". In URL paths we write
+  it with a dash (`BTC-USD`) because a slash can't live in a path.
+- **The market never closes** — 24/7, weekends and holidays included. The market clock and
+  calendar simply don't apply.
+- **Always fractional** — you buy amounts like `0.0002` BTC; there's a small per-asset minimum
+  (`minOrderSize` on the asset), and orders under about $10 total are rejected.
+- **Fewer order options** — types: market, limit, stop-limit; time in force: `gtc` or `ioc` only.
+- **No shorting, no margin** — you can only hold what you bought, with your own cash.
+- **No PDT rule** — day-trade as much as you like; crypto isn't a security.
+- **Fees come out of what you receive** — buy 0.0002 BTC and roughly 0.0001995 lands in the
+  position (a ~0.25% taker fee at the entry tier). Stocks on Alpaca are commission-free; crypto
+  is not.

@@ -43,6 +43,12 @@ All routes except `GET /health` and `GET /metrics` require the `x-api-key` heade
   Alpaca's real `nextPageToken`)
 - **assets & calendar** — `GET /v1/assets`, `GET /v1/assets/:symbol`, `GET /v1/calendar`
 
+**Crypto**: fully supported (spot pairs, 24/7). Canonical symbols are slash pairs (`BTC/USD`) in
+request/response bodies; in URL *paths* use the dash form (`/v1/positions/BTC-USD`). Crypto
+orders accept `gtc`/`ioc` only, types market/limit/stop_limit, no shorting, ≥$10 per order, and
+maker/taker fees come out of the credited asset. The clock/calendar endpoints describe the
+equities session only.
+
 ### Order-safety contract (read before integrating)
 
 - The server **never** retries or resubmits order mutations. If placement outcome is unknown
