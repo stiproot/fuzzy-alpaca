@@ -14,6 +14,7 @@ import {
   type CreateOrderRequest,
   type ReplaceOrderRequest,
 } from "../../../domain/schemas/order.js"
+import { cryptoSymbolFromSlashless } from "../../../domain/primitives.js"
 import { CalendarDay } from "../../../domain/schemas/calendar.js"
 import {
   BarFromWire,
@@ -63,7 +64,45 @@ export const wireClockFixture = {
   next_close: "2026-07-06T16:00:00.000000-04:00",
 }
 
+export const wireCryptoAssetFixture = {
+  id: "276e2673-764b-4ab6-a611-caf665ca6340",
+  class: "crypto",
+  exchange: "ALPACA",
+  symbol: "BTC/USD",
+  status: "active",
+  tradable: true,
+  marginable: false,
+  shortable: false,
+  fractionable: true,
+  easy_to_borrow: false,
+  min_order_size: "0.0001",
+  min_trade_increment: "0.0001",
+  price_increment: "1",
+}
+
+// Position wire uses the slashless legacy symbology
+export const wireCryptoPositionFixture = {
+  asset_id: "276e2673-764b-4ab6-a611-caf665ca6340",
+  symbol: "BTCUSD",
+  exchange: "",
+  asset_class: "crypto",
+  side: "long",
+  qty: "0.5",
+  qty_available: "0.5",
+  avg_entry_price: "60000",
+  cost_basis: "30000",
+  market_value: "31500",
+  current_price: "63000",
+  lastday_price: "62500",
+  unrealized_pl: "1500",
+  unrealized_plpc: "0.05",
+  unrealized_intraday_pl: "250",
+  unrealized_intraday_plpc: "0.008",
+  change_today: "0.008",
+}
+
 const wireAssetDefaults = [
+  wireCryptoAssetFixture,
   {
     id: "b0b6dd9d-8b9b-48a9-ba46-b9d54906e415",
     class: "us_equity",
@@ -185,6 +224,19 @@ const makeWireOrder = (req: CreateOrderRequest, id: string, status: string): Wir
 })
 
 const OPEN_STATUSES = ["new", "accepted", "pending_new", "partially_filled"]
+
+// Mirror the live adapter: crypto position wire symbols are slashless.
+const canonicalWireSymbol = (wire: Record<string, unknown>): string =>
+  wire["asset_class"] === "crypto"
+    ? (cryptoSymbolFromSlashless(wire["symbol"] as string) ?? (wire["symbol"] as string))
+    : (wire["symbol"] as string)
+
+const normalizePosition = <P extends { readonly symbol: string; readonly assetClass: string }>(
+  position: P
+): P =>
+  position.assetClass === "crypto"
+    ? { ...position, symbol: cryptoSymbolFromSlashless(position.symbol) ?? position.symbol }
+    : position
 
 export interface AlpacaClientTestOptions {
   readonly account?: Account
@@ -446,7 +498,10 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
           Ref.get(positions).pipe(
             Effect.flatMap((all) =>
               Effect.forEach(all, (wire) =>
-                Schema.decodeUnknown(PositionFromWire)(wire).pipe(Effect.orDie)
+                Schema.decodeUnknown(PositionFromWire)(wire).pipe(
+                  Effect.orDie,
+                  Effect.map(normalizePosition)
+                )
               )
             )
           ),
@@ -454,11 +509,12 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
         getPosition: (symbol: string) =>
           Ref.get(positions).pipe(
             Effect.flatMap((all) => {
-              const wire = all.find((p) => p["symbol"] === symbol)
+              const wire = all.find((p) => canonicalWireSymbol(p) === symbol)
               return wire === undefined
                 ? Effect.succeed(Option.none())
                 : Schema.decodeUnknown(PositionFromWire)(wire).pipe(
                     Effect.orDie,
+                    Effect.map(normalizePosition),
                     Effect.map(Option.some)
                   )
             })
@@ -467,7 +523,7 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
         closePosition: (symbol: string, params: ClosePositionParams) =>
           Ref.get(positions).pipe(
             Effect.flatMap((all) => {
-              const wire = all.find((p) => p["symbol"] === symbol)
+              const wire = all.find((p) => canonicalWireSymbol(p) === symbol)
               if (wire === undefined) {
                 return Effect.fail(
                   new PositionNotFound({ message: `no open position in ${symbol}` })
@@ -513,9 +569,9 @@ export const AlpacaClientTest = (options: AlpacaClientTestOptions = {}) =>
                 Effect.andThen(
                   Ref.update(positions, (current) =>
                     remaining <= 0
-                      ? current.filter((p) => p["symbol"] !== symbol)
+                      ? current.filter((p) => canonicalWireSymbol(p) !== symbol)
                       : current.map((p) =>
-                          p["symbol"] === symbol
+                          canonicalWireSymbol(p) === symbol
                             ? { ...p, qty: String(remaining), qty_available: String(remaining) }
                             : p
                         )

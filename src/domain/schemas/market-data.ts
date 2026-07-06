@@ -131,3 +131,13 @@ export const BarsQuery = Schema.Struct({
   adjustment: Schema.optional(Schema.Literal("raw", "split", "dividend", "all")),
 })
 export type BarsQuery = typeof BarsQuery.Type
+
+// ---- Crypto data API (v1beta3) envelopes ----
+// Responses nest per symbol: { "bars": { "BTC/USD": [...] }, "next_page_token": ... }
+
+export const CryptoBarsPageFromWire = Schema.Struct({
+  bars: Schema.Record({ key: Schema.String, value: Schema.Array(BarFromWire) }),
+  nextPageToken: Schema.propertySignature(Schema.OptionFromNullOr(Schema.String)).pipe(
+    Schema.fromKey("next_page_token")
+  ),
+})

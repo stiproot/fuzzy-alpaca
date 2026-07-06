@@ -14,7 +14,13 @@ import {
   isRetryableAlpacaError,
   type AlpacaError,
 } from "../../../domain/errors.js"
-import type { AnySymbol, ClientOrderId, OrderId } from "../../../domain/primitives.js"
+import {
+  cryptoSymbolFromSlashless,
+  isCryptoSymbol,
+  type AnySymbol,
+  type ClientOrderId,
+  type OrderId,
+} from "../../../domain/primitives.js"
 import { AccountFromWire } from "../../../domain/schemas/account.js"
 import { AssetFromWire } from "../../../domain/schemas/asset.js"
 import { ClockFromWire } from "../../../domain/schemas/clock.js"
@@ -27,13 +33,16 @@ import {
 import { CalendarDay } from "../../../domain/schemas/calendar.js"
 import {
   BarsPageFromWire,
+  CryptoBarsPageFromWire,
   LatestQuoteFromWire,
   LatestTradeFromWire,
+  QuoteDataFromWire,
   SnapshotFromWire,
+  TradeDataFromWire,
   type BarsPage,
   type Snapshot,
 } from "../../../domain/schemas/market-data.js"
-import { PositionFromWire } from "../../../domain/schemas/position.js"
+import { PositionFromWire, type Position } from "../../../domain/schemas/position.js"
 import {
   AlpacaClient,
   type CalendarParams,
@@ -202,6 +211,45 @@ const isDuplicateClientOrderId = (thrown: unknown): boolean =>
   statusOf(thrown) === 422 && /client.?order.?id/i.test(dataMessageOf(thrown) ?? "")
 
 const DATA_BASE_URL = "https://data.alpaca.markets/v2/stocks"
+const CRYPTO_DATA_BASE_URL = "https://data.alpaca.markets/v1beta3/crypto/us"
+
+// Trading-API path segments can't carry "/": USD pairs use the legacy
+// slashless form (per Alpaca docs), other quotes the URL-encoded slash.
+const assetPathForm = (symbol: AnySymbol): string =>
+  isCryptoSymbol(symbol)
+    ? symbol.endsWith("/USD")
+      ? symbol.replace("/", "")
+      : encodeURIComponent(symbol)
+    : symbol
+
+// Positions use the slashless legacy form in paths.
+const positionPathForm = (symbol: AnySymbol): string =>
+  isCryptoSymbol(symbol) ? symbol.replace("/", "") : symbol
+
+// Position wire symbols are slashless ("BTCUSD"); normalize crypto positions
+// to the canonical pair form.
+const normalizePositionSymbol = (position: Position): Position =>
+  position.assetClass === "crypto"
+    ? {
+        ...position,
+        symbol: (cryptoSymbolFromSlashless(position.symbol) ?? position.symbol) as AnySymbol,
+      }
+    : position
+
+// Crypto data responses nest per requested symbol; a well-formed but unknown
+// symbol is silently omitted from the map — surface that as AssetNotFound.
+export const unwrapCryptoEntry =
+  (kind: string, symbol: string) =>
+  (raw: unknown): Effect.Effect<unknown, AssetNotFound> => {
+    const map = (raw as Record<string, unknown> | null)?.[kind]
+    const entry =
+      typeof map === "object" && map !== null
+        ? (map as Record<string, unknown>)[symbol]
+        : undefined
+    return entry === undefined
+      ? Effect.fail(new AssetNotFound({ message: `no crypto ${kind} data for ${symbol}` }))
+      : Effect.succeed(entry)
+  }
 
 export const AlpacaClientLive = Layer.effect(
   AlpacaClient,
@@ -357,56 +405,111 @@ export const AlpacaClientLive = Layer.effect(
         alpacaCall("cancelAllOrders", () => sdk.cancelAllOrders(), CancelAllFromWire),
 
       getAsset: (symbol: AnySymbol) =>
-        alpacaOptionalCall("getAsset", () => sdk.getAsset(symbol), AssetFromWire),
+        alpacaOptionalCall("getAsset", () => sdk.getAsset(assetPathForm(symbol)), AssetFromWire),
 
       getPositions: () =>
-        alpacaCall("getPositions", () => sdk.getPositions(), Schema.Array(PositionFromWire)),
+        alpacaCall("getPositions", () => sdk.getPositions(), Schema.Array(PositionFromWire)).pipe(
+          Effect.map((positions) => positions.map(normalizePositionSymbol))
+        ),
 
       getLatestQuote: (symbol: AnySymbol) =>
-        alpacaReadPipeline(
-          "getLatestQuote",
-          restGetRaw("getLatestQuote", `${DATA_BASE_URL}/${symbol}/quotes/latest`, {
-            feed: config.feed,
-          }),
-          LatestQuoteFromWire
-        ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.quote }))),
+        isCryptoSymbol(symbol)
+          ? alpacaReadPipeline(
+              "getLatestQuote",
+              restGetRaw("getLatestQuote", `${CRYPTO_DATA_BASE_URL}/latest/quotes`, {
+                symbols: symbol,
+              }).pipe(Effect.flatMap(unwrapCryptoEntry("quotes", symbol))),
+              QuoteDataFromWire
+            ).pipe(Effect.map((quote) => ({ symbol, ...quote })))
+          : alpacaReadPipeline(
+              "getLatestQuote",
+              restGetRaw("getLatestQuote", `${DATA_BASE_URL}/${symbol}/quotes/latest`, {
+                feed: config.feed,
+              }),
+              LatestQuoteFromWire
+            ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.quote }))),
 
       getLatestTrade: (symbol: AnySymbol) =>
-        alpacaReadPipeline(
-          "getLatestTrade",
-          restGetRaw("getLatestTrade", `${DATA_BASE_URL}/${symbol}/trades/latest`, {
-            feed: config.feed,
-          }),
-          LatestTradeFromWire
-        ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.trade }))),
+        isCryptoSymbol(symbol)
+          ? alpacaReadPipeline(
+              "getLatestTrade",
+              restGetRaw("getLatestTrade", `${CRYPTO_DATA_BASE_URL}/latest/trades`, {
+                symbols: symbol,
+              }).pipe(Effect.flatMap(unwrapCryptoEntry("trades", symbol))),
+              TradeDataFromWire
+            ).pipe(Effect.map((trade) => ({ symbol, ...trade })))
+          : alpacaReadPipeline(
+              "getLatestTrade",
+              restGetRaw("getLatestTrade", `${DATA_BASE_URL}/${symbol}/trades/latest`, {
+                feed: config.feed,
+              }),
+              LatestTradeFromWire
+            ).pipe(Effect.map((wire) => ({ symbol: wire.symbol, ...wire.trade }))),
 
       getSnapshot: (symbol: AnySymbol): Effect.Effect<Snapshot, AlpacaError | AssetNotFound> =>
-        alpacaReadPipeline(
-          "getSnapshot",
-          restGetRaw("getSnapshot", `${DATA_BASE_URL}/${symbol}/snapshot`, { feed: config.feed }),
-          SnapshotFromWire
-        ),
+        isCryptoSymbol(symbol)
+          ? alpacaReadPipeline(
+              "getSnapshot",
+              restGetRaw("getSnapshot", `${CRYPTO_DATA_BASE_URL}/snapshots`, {
+                symbols: symbol,
+              }).pipe(
+                Effect.flatMap(unwrapCryptoEntry("snapshots", symbol)),
+                // crypto snapshot entries carry no symbol field; inject ours
+                Effect.map((entry) =>
+                  typeof entry === "object" && entry !== null ? { ...entry, symbol } : entry
+                )
+              ),
+              SnapshotFromWire
+            )
+          : alpacaReadPipeline(
+              "getSnapshot",
+              restGetRaw("getSnapshot", `${DATA_BASE_URL}/${symbol}/snapshot`, { feed: config.feed }),
+              SnapshotFromWire
+            ),
 
       getBars: (symbol: AnySymbol, params: GetBarsParams): Effect.Effect<BarsPage, AlpacaError | AssetNotFound> =>
-        alpacaReadPipeline(
-          "getBars",
-          restGetRaw("getBars", `${DATA_BASE_URL}/${symbol}/bars`, {
-            timeframe: params.timeframe,
-            start: params.start,
-            end: params.end,
-            limit: params.limit,
-            adjustment: params.adjustment,
-            page_token: params.pageToken,
-            feed: config.feed,
-          }),
-          BarsPageFromWire
-        ).pipe(
-          Effect.map((wire) => ({
-            symbol: wire.symbol,
-            items: Option.getOrElse(wire.bars, () => []),
-            ...(Option.isSome(wire.nextPageToken) ? { nextPageToken: wire.nextPageToken.value } : {}),
-          }))
-        ),
+        isCryptoSymbol(symbol)
+          ? alpacaReadPipeline(
+              "getBars",
+              restGetRaw("getBars", `${CRYPTO_DATA_BASE_URL}/bars`, {
+                symbols: symbol,
+                timeframe: params.timeframe,
+                start: params.start,
+                end: params.end,
+                limit: params.limit,
+                page_token: params.pageToken,
+              }),
+              CryptoBarsPageFromWire
+            ).pipe(
+              Effect.map((wire) => ({
+                symbol,
+                items: wire.bars[symbol] ?? [],
+                ...(Option.isSome(wire.nextPageToken)
+                  ? { nextPageToken: wire.nextPageToken.value }
+                  : {}),
+              }))
+            )
+          : alpacaReadPipeline(
+              "getBars",
+              restGetRaw("getBars", `${DATA_BASE_URL}/${symbol}/bars`, {
+                timeframe: params.timeframe,
+                start: params.start,
+                end: params.end,
+                limit: params.limit,
+                adjustment: params.adjustment,
+                page_token: params.pageToken,
+                feed: config.feed,
+              }),
+              BarsPageFromWire
+            ).pipe(
+              Effect.map((wire) => ({
+                symbol: wire.symbol,
+                items: Option.getOrElse(wire.bars, () => []),
+                ...(Option.isSome(wire.nextPageToken)
+                  ? { nextPageToken: wire.nextPageToken.value }
+                  : {}),
+              }))
+            ),
 
       getAssets: (params: ListAssetsParams) =>
         alpacaCall(
@@ -427,7 +530,11 @@ export const AlpacaClientLive = Layer.effect(
         ),
 
       getPosition: (symbol: AnySymbol) =>
-        alpacaOptionalCall("getPosition", () => sdk.getPosition(symbol), PositionFromWire),
+        alpacaOptionalCall(
+          "getPosition",
+          () => sdk.getPosition(positionPathForm(symbol)),
+          PositionFromWire
+        ).pipe(Effect.map(Option.map(normalizePositionSymbol))),
 
       // Returns the liquidation order Alpaca creates for the close.
       closePosition: (symbol: AnySymbol, params: ClosePositionParams) =>
@@ -435,7 +542,7 @@ export const AlpacaClientLive = Layer.effect(
           "closePosition",
           () =>
             sdk.sendRequest(
-              `/positions/${symbol}`,
+              `/positions/${positionPathForm(symbol)}`,
               {
                 ...(params.qty !== undefined ? { qty: params.qty } : {}),
                 ...(params.percentage !== undefined ? { percentage: params.percentage } : {}),

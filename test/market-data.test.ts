@@ -89,11 +89,11 @@ it.layer(TestServer)("market data + assets + calendar + metrics", (it) => {
   it.effect("assets: search + tradable filter + get + 404", () =>
     Effect.gen(function* () {
       const all: any = yield* get("/v1/assets").pipe(Effect.flatMap((r) => r.json))
-      expect(all.totalMatches).toBe(2)
+      expect(all.totalMatches).toBe(3) // BTC/USD crypto + AAPL + HALT
 
       const tradable: any = yield* get("/v1/assets?tradable=true").pipe(Effect.flatMap((r) => r.json))
-      expect(tradable.items).toHaveLength(1)
-      expect(tradable.items[0].symbol).toBe("AAPL")
+      expect(tradable.items).toHaveLength(2)
+      expect(tradable.items.map((a: any) => a.symbol).sort()).toEqual(["AAPL", "BTC/USD"])
 
       const searched: any = yield* get("/v1/assets?search=aa").pipe(Effect.flatMap((r) => r.json))
       expect(searched.items).toHaveLength(1)
