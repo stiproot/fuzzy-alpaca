@@ -11,8 +11,31 @@ offline-testable; LLM agents come in Phase C.
 | Milestone | Status | Notes |
 |---|---|---|
 | 1. Pure signal + risk/decision core | ✅ done (2026-07-07) | 17 tests; ruff + mypy --strict clean |
-| 2. Bars cache + decisions journal | ⬜ | Postgres read-through + SQL journal |
-| 3. strategy_tick workflow + live verify | ⬜ | signal → size → place → journal, paper |
+| 2. Bars cache + decisions journal | ✅ done (2026-07-07) | asyncpg; read-through returns recent tail |
+| 3. strategy_tick workflow + live verify | ✅ done (2026-07-07) | Live: hold + buy paths, both journalled |
+
+## Result
+
+Live paper runs through the full stack. Both branches of the pipeline verified end-to-end:
+
+- **Hold:** `sma_crossover / BTC-USD / 1Day` → signal `sell` → `hold`, journalled (no order).
+- **Buy:** `mean_reversion / BTC-USD / 1Day` → BTC 5.68% below its 20-day MA → `buy`, sized to
+  `$15.00` → order `955fdac8…` **filled** → journalled with the order id + outcome.
+
+Postgres holds the decisions journal (decision → order_id → outcome, the evaluation record) and
+the bars cache (80 BTC/USD daily bars, 2026-04-19 → today, read-through).
+
+**Deltas from plan:**
+- Added a third strategy, **`mean_reversion`** (buy below the moving average) — genuinely useful and
+  the one that signals buy in a down market, so it exercises the place path.
+- Bars read-through fetches a **wide window from a lookback start and returns the recent tail**: a
+  bare `limit` from an old `start` returns the *oldest* bars, not the newest (caught live — signals
+  were computing on 6-week-stale data).
+- Bars + decisions on **direct SQL (asyncpg)**, fresh connection per call (fits the
+  `asyncio.run`-per-activity edge); Dapr KV state stays for the orders mirror + workflow engine.
+- `current_exposure` is 0 for the MVP (fresh-entry sizing); position-aware exposure arrives with
+  position management in a later phase.
+- Added a Postgres volume for durability.
 
 ## Milestone 1 — the deterministic brain (pure, no I/O)
 

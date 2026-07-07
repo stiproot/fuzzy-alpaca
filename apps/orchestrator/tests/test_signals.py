@@ -1,4 +1,9 @@
-from orchestrator.application.signals import STRATEGIES, momentum, sma_crossover
+from orchestrator.application.signals import (
+    STRATEGIES,
+    mean_reversion,
+    momentum,
+    sma_crossover,
+)
 from orchestrator.domain.strategy import Bar
 
 
@@ -34,5 +39,12 @@ def test_momentum_positive_and_negative() -> None:
     assert down.action == "sell"
 
 
+def test_mean_reversion_buys_below_ma() -> None:
+    # last close well below the recent average → buy
+    bars = _bars([float(i) for i in range(30, 0, -1)])  # falling: last is lowest
+    sig = mean_reversion(bars, period=20)
+    assert sig.action == "buy"
+
+
 def test_registry_exposes_strategies() -> None:
-    assert set(STRATEGIES) == {"sma_crossover", "momentum"}
+    assert set(STRATEGIES) == {"sma_crossover", "momentum", "mean_reversion"}

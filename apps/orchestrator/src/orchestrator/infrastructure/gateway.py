@@ -7,6 +7,7 @@ import httpx
 from returns.result import Failure, Result, Success
 
 from orchestrator.domain.models import Account, GatewayError, Order, PlaceOrder, Whoami
+from orchestrator.domain.strategy import Bar
 
 
 def _transport_error(message: str) -> GatewayError:
@@ -77,6 +78,15 @@ class GatewayClient:
     async def get_order(self, order_id: str) -> Result[Order, GatewayError]:
         return (await self._get(f"/v1/orders/{order_id}")).map(_to_order)
 
+    async def get_bars(
+        self, symbol_path: str, timeframe: str, limit: int, start: str | None = None
+    ) -> Result[list[Bar], GatewayError]:
+        # symbol_path is the URL form (dash for crypto, e.g. BTC-USD)
+        path = f"/v1/market-data/{symbol_path}/bars?timeframe={timeframe}&limit={limit}"
+        if start is not None:
+            path += f"&start={start}"
+        return (await self._get(path)).map(_to_bars)
+
 
 def _parse(resp: httpx.Response) -> Result[dict[str, object], GatewayError]:
     try:
@@ -102,6 +112,22 @@ def _order_payload(order: PlaceOrder) -> dict[str, object]:
         "stopPrice": order.stop_price,
     }
     return {k: v for k, v in raw.items() if v is not None}
+
+
+def _to_bars(b: dict[str, object]) -> list[Bar]:
+    items = b.get("items", [])
+    rows = items if isinstance(items, list) else []
+    return [
+        Bar(
+            ts=str(r["timestamp"]),
+            open=float(r["open"]),
+            high=float(r["high"]),
+            low=float(r["low"]),
+            close=float(r["close"]),
+            volume=float(r["volume"]),
+        )
+        for r in rows
+    ]
 
 
 def _to_order(b: dict[str, object]) -> Order:

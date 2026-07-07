@@ -49,7 +49,25 @@ def momentum(bars: Sequence[Bar], lookback: int = 20) -> Signal:
     return Signal(action="hold", strength=0.0, reason="flat")
 
 
+def mean_reversion(bars: Sequence[Bar], period: int = 20, threshold: float = 0.0) -> Signal:
+    """Buy when price sits below its moving average (oversold → expect reversion up)."""
+    closes = [b.close for b in bars]
+    ma = _sma(closes, period)
+    if ma is None:
+        return Signal(
+            action="hold", strength=0.0, reason=f"need >= {period} bars, have {len(bars)}"
+        )
+    dev = (closes[-1] - ma) / ma
+    strength = min(1.0, abs(dev) * 20)
+    if dev < -threshold:
+        return Signal(action="buy", strength=strength, reason=f"below MA ({dev:.4f})")
+    if dev > threshold:
+        return Signal(action="sell", strength=strength, reason=f"above MA ({dev:.4f})")
+    return Signal(action="hold", strength=0.0, reason="at MA")
+
+
 STRATEGIES: dict[str, Strategy] = {
     "sma_crossover": sma_crossover,
     "momentum": momentum,
+    "mean_reversion": mean_reversion,
 }
