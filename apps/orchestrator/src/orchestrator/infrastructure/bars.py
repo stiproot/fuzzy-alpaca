@@ -16,12 +16,12 @@ from orchestrator.infrastructure.gateway import GatewayClient
 _UNIT_SECONDS = {"Min": 60, "Hour": 3600, "Day": 86400, "Week": 604800}
 
 
-def _url_symbol(symbol: str) -> str:
+def url_symbol(symbol: str) -> str:
     # Crypto pairs use the dash form in gateway URL paths (BTC/USD -> BTC-USD).
     return symbol.replace("/", "-")
 
 
-def _lookback_start(timeframe: str, need: int) -> str:
+def lookback_start(timeframe: str, need: int) -> str:
     """A start timestamp comfortably older than `need` bars of `timeframe` (2x buffer)."""
     unit = next((u for u in _UNIT_SECONDS if timeframe.endswith(u)), "Day")
     n = int(timeframe[: -len(unit)] or 1)
@@ -76,10 +76,10 @@ class BarsCache:
         # Fetch a window wide enough to *contain* the recent `need` bars. The gateway returns
         # ascending from `start` up to `limit`, so request a generous limit and take the tail
         # (a bare limit from an old start would return the OLDEST bars, not the newest).
-        start = _lookback_start(timeframe, need)
+        start = lookback_start(timeframe, need)
         wide = min(1000, max(need * 3, need + 10))
         fetched = await self._gateway.get_bars(
-            _url_symbol(symbol), timeframe, limit=wide, start=start
+            url_symbol(symbol), timeframe, limit=wide, start=start
         )
         if not is_successful(fetched):
             err = fetched.failure()

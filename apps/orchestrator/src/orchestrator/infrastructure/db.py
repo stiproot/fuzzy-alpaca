@@ -31,6 +31,21 @@ CREATE TABLE IF NOT EXISTS decisions (
     order_id    text,
     outcome     text
 );
+
+CREATE TABLE IF NOT EXISTS backtests (
+    id            bigserial PRIMARY KEY,
+    ts            timestamptz NOT NULL DEFAULT now(),
+    strategy      text   NOT NULL,
+    symbol        text   NOT NULL,
+    timeframe     text   NOT NULL,
+    bars          int    NOT NULL,
+    total_return  double precision NOT NULL,
+    sharpe        double precision NOT NULL,
+    max_drawdown  double precision NOT NULL,
+    num_trades    int    NOT NULL,
+    win_rate      double precision NOT NULL,
+    config        jsonb  NOT NULL
+);
 """
 
 
