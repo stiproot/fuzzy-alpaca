@@ -146,3 +146,28 @@ def journal_decision_activity(
     if not is_successful(result):
         raise RuntimeError(f"journal_decision: {result.failure()}")
     return {"decision_id": result.unwrap()}
+
+
+def gate_activity(_ctx: wf.WorkflowActivityContext, payload: dict[str, Any]) -> dict[str, Any]:
+    """Walk-forward gate: evaluate the strategy out-of-sample over cached bars, persist the OOS
+    result, and return the verdict. The workflow refuses to place when this blocks."""
+    from orchestrator.application.gate import evaluate
+    from orchestrator.application.walkforward import walk_forward
+    from orchestrator.domain.backtest import BacktestConfig
+    from orchestrator.domain.gate import GateCriteria
+
+    strategy = payload["strategy"]
+    symbol = payload["symbol"]
+    bars = [Bar(**b) for b in payload["bars"]]
+    config = BacktestConfig()
+    oos = walk_forward(strategy, symbol, bars, STRATEGIES[strategy], config)
+    verdict = evaluate(oos, GateCriteria(**payload.get("criteria", {})))
+    return {
+        "passed": verdict.passed,
+        "reasons": list(verdict.reasons),
+        "oos_return": oos.oos_return,
+        "oos_sharpe": oos.oos_sharpe,
+        "oos_max_drawdown": oos.oos_max_drawdown,
+        "oos_trades": oos.oos_trades,
+        "positive_folds_frac": oos.positive_folds_frac,
+    }

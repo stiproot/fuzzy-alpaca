@@ -15,6 +15,7 @@ from orchestrator.infrastructure.activities import (
     account_equity_activity,
     bootstrap_activity,
     decide_activity,
+    gate_activity,
     journal_decision_activity,
     place_order_activity,
     poll_order_activity,
@@ -27,7 +28,8 @@ _PLACE_RETRY = wf.RetryPolicy(
     backoff_coefficient=2.0,
 )
 
-_DEFAULT_NEED = 40  # enough bars for the default sma_crossover(10, 30)
+# Enough history for the walk-forward gate (4 folds x warmup+room); live signals key off the tail.
+_DEFAULT_NEED = 200
 
 
 def strategy_tick(
@@ -59,6 +61,22 @@ def strategy_tick(
 
     order_id: str | None = None
     outcome = "hold"
+    gate: dict[str, Any] | None = None
+    if decision["action"] == "buy":
+        # The gate is binding: an unproven strategy never reaches the money path.
+        gate = yield ctx.call_activity(
+            gate_activity,
+            input={
+                "strategy": strategy,
+                "symbol": symbol,
+                "bars": bars,
+                "criteria": tick_input.get("criteria", {}),
+            },
+        )
+        if not gate["passed"]:
+            outcome = "blocked:" + "; ".join(gate["reasons"])
+            decision = {**decision, "action": "hold"}
+
     if decision["action"] == "buy":
         place_payload = {
             "instance_id": ctx.instance_id,
@@ -99,4 +117,5 @@ def strategy_tick(
         "order_id": order_id,
         "outcome": outcome,
         "decision_id": journalled["decision_id"],
+        "gate": gate,
     }

@@ -18,6 +18,7 @@ from orchestrator.infrastructure.activities import (
     account_equity_activity,
     bootstrap_activity,
     decide_activity,
+    gate_activity,
     journal_activity,
     journal_decision_activity,
     place_order_activity,
@@ -40,6 +41,7 @@ for _activity in (
     refresh_bars_activity,
     account_equity_activity,
     decide_activity,
+    gate_activity,
     journal_decision_activity,
 ):
     _runtime.register_activity(_activity)

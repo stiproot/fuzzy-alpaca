@@ -41,3 +41,22 @@ class BacktestResult(Frozen):
     final_equity: float
     trades: tuple[Trade, ...]
     equity_curve: tuple[float, ...]
+
+
+class WalkForwardResult(Frozen):
+    """Out-of-sample aggregate across contiguous folds — the honest evaluation the gate reads."""
+
+    strategy: str
+    symbol: str
+    folds: int
+    positive_folds: int
+    oos_return: float
+    oos_sharpe: float
+    oos_max_drawdown: float
+    oos_trades: int
+    oos_win_rate: float
+    per_fold_returns: tuple[float, ...]
+
+    @property
+    def positive_folds_frac(self) -> float:
+        return (self.positive_folds / self.folds) if self.folds else 0.0
