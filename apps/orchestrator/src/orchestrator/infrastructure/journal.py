@@ -39,3 +39,18 @@ class DecisionsJournal:
         except Exception as exc:  # noqa: BLE001 — DB edge, surfaced as Result
             return Failure(f"journal insert: {exc}")
         return Success(row_id)
+
+    async def recent(self, limit: int) -> Result[list[dict[str, object]], str]:
+        try:
+            conn = await connect(self._dsn)
+            try:
+                rows = await conn.fetch(
+                    "SELECT ts, strategy, symbol, action, notional, rationale, order_id, outcome "
+                    "FROM decisions ORDER BY id DESC LIMIT $1",
+                    limit,
+                )
+            finally:
+                await conn.close()
+        except Exception as exc:  # noqa: BLE001
+            return Failure(f"journal read: {exc}")
+        return Success([{**dict(r), "ts": r["ts"].isoformat()} for r in rows])

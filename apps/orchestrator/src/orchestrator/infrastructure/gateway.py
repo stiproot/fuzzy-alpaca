@@ -78,6 +78,12 @@ class GatewayClient:
     async def get_order(self, order_id: str) -> Result[Order, GatewayError]:
         return (await self._get(f"/v1/orders/{order_id}")).map(_to_order)
 
+    async def get_positions_raw(self) -> Result[object, GatewayError]:
+        return (await self._get("/v1/positions")).map(lambda b: b)
+
+    async def get_snapshot_raw(self, symbol_path: str) -> Result[dict[str, object], GatewayError]:
+        return await self._get(f"/v1/market-data/{symbol_path}/snapshot")
+
     async def get_bars(
         self, symbol_path: str, timeframe: str, limit: int, start: str | None = None
     ) -> Result[list[Bar], GatewayError]:

@@ -26,7 +26,7 @@ scaffolding shapes; we build our own use-case-specific system.
 | **Orchestrator** | Dapr Workflows sequencing trading loops (bootstrap → signal → decide → execute → poll → journal) | to build |
 | **Intelligence** | Signals (quant) → decision/risk (deterministic) → agents (research/review) | to build, incremental |
 | **State** | Postgres via a Dapr state component: bars cache, decisions journal, orders mirror | to build |
-| **Agent tools (MCP)** | Curated trading toolset exposed to reasoning agents | to build |
+| **Agent tools (MCP)** | Curated read + research toolset (market, backtest, gate, journal); no placement | ✅ built (`apps/orchestrator` MCP, SSE) |
 | **Deployment** | compose/k8s stack with Dapr sidecars, referencing `h`'s wiring | partial (gateway image done) |
 
 ## The execution model (holds regardless of `h`)

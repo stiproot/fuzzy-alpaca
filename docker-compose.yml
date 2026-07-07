@@ -58,6 +58,23 @@ services:
       gateway:
         condition: service_started
 
+  trading-mcp:
+    build:
+      context: ./apps/orchestrator
+    command: ["uv", "run", "--no-dev", "python", "-m", "orchestrator.presentation.mcp_server"]
+    environment:
+      MCP_PORT: "8090"
+      GATEWAY_URL: "http://gateway:3000"
+      SERVICE_API_KEY: "${SERVICE_API_KEY:-dev-service-key}"
+      DATABASE_URL: "postgresql://alpaca:alpaca@postgres:5432/alpaca"
+    ports:
+      - "8090:8090"
+    depends_on:
+      gateway:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
   orchestrator-dapr:
     image: daprio/daprd:edge
     command:
