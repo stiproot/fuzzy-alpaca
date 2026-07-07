@@ -1,0 +1,14 @@
+# Dapr cron binding — fires the research-agent loop. Dapr POSTs to the route named after this
+# component (/research-tick) on the schedule below. Scoped to the research-agent app only.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: research-tick
+spec:
+  type: bindings.cron
+  version: v1
+  metadata:
+    - name: schedule
+      value: "@every 300s"
+scopes:
+  - research-agent

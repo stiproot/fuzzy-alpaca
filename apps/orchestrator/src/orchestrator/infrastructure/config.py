@@ -17,6 +17,12 @@ class Settings(BaseModel):
     dapr_http_port: str
     database_url: str
     state_store: str = "statestore"
+    # research agent
+    mcp_url: str = "http://localhost:8090/sse"
+    llm_base_url: str = "https://api.deepseek.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "deepseek-chat"
+    research_symbols: str = "BTC/USD,ETH/USD"
 
     @property
     def state_url(self) -> str:
@@ -33,4 +39,9 @@ def load_settings() -> Settings:
             "DATABASE_URL", "postgresql://alpaca:alpaca@localhost:5432/alpaca"
         ),
         state_store=os.environ.get("STATE_STORE", "statestore"),
+        mcp_url=os.environ.get("MCP_URL", "http://localhost:8090/sse"),
+        llm_base_url=os.environ.get("LLM_BASE_URL", "https://api.deepseek.com/v1"),
+        llm_api_key=os.environ.get("LLM_API_KEY", ""),
+        llm_model=os.environ.get("LLM_MODEL", "deepseek-chat"),
+        research_symbols=os.environ.get("RESEARCH_SYMBOLS", "BTC/USD,ETH/USD"),
     )

@@ -75,6 +75,45 @@ services:
       postgres:
         condition: service_healthy
 
+  research-agent:
+    build:
+      context: ./apps/orchestrator
+    command: ["uv", "run", "--no-dev", "python", "-m", "orchestrator.presentation.agent_app"]
+    environment:
+      APP_PORT: "8080"
+      SERVICE_API_KEY: "${SERVICE_API_KEY:-dev-service-key}"
+      MCP_URL: "http://trading-mcp:8090/sse"
+      DATABASE_URL: "postgresql://alpaca:alpaca@postgres:5432/alpaca"
+      LLM_BASE_URL: "${LLM_BASE_URL:-https://api.deepseek.com/v1}"
+      LLM_API_KEY: "${LLM_API_KEY:-}"
+      LLM_MODEL: "${LLM_MODEL:-deepseek-chat}"
+      RESEARCH_SYMBOLS: "${RESEARCH_SYMBOLS:-BTC/USD,ETH/USD}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trading-mcp:
+        condition: service_started
+
+  research-agent-dapr:
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=research-agent"
+      - "--app-port=8080"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+    network_mode: "service:research-agent"
+    depends_on:
+      - research-agent
+      - placement
+      - scheduler
+
   orchestrator-dapr:
     image: daprio/daprd:edge
     command:

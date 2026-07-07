@@ -24,7 +24,7 @@ scaffolding shapes; we build our own use-case-specific system.
 |---|---|---|
 | **Gateway** (this service) | Stateless broker adapter: typed, idempotent, safe access to Alpaca (equities + crypto) | ✅ built, live-verified, containerized |
 | **Orchestrator** | Dapr Workflows sequencing trading loops (bootstrap → signal → decide → execute → poll → journal) | to build |
-| **Intelligence** | Signals (quant) → decision/risk (deterministic) → agents (research/review) | to build, incremental |
+| **Intelligence** | Signals (quant) → decision/risk (deterministic) → agents (research/review) | ✅ signals+risk+backtest+gate; DeepSeek research-agent (cron, MCP tools, proposes) |
 | **State** | Postgres via a Dapr state component: bars cache, decisions journal, orders mirror | to build |
 | **Agent tools (MCP)** | Curated read + research toolset (market, backtest, gate, journal); no placement | ✅ built (`apps/orchestrator` MCP, SSE) |
 | **Deployment** | compose/k8s stack with Dapr sidecars, referencing `h`'s wiring | partial (gateway image done) |

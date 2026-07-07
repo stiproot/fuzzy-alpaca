@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS backtests (
     win_rate      double precision NOT NULL,
     config        jsonb  NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS proposals (
+    id          bigserial PRIMARY KEY,
+    ts          timestamptz NOT NULL DEFAULT now(),
+    model       text  NOT NULL,
+    turns       int   NOT NULL,
+    proposal    text  NOT NULL,
+    tool_calls  jsonb NOT NULL DEFAULT '[]'
+);
 """
 
 
