@@ -3,3 +3,11 @@ dist/
 .env
 openapi.json
 *.log
+
+# Python (orchestrator)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
