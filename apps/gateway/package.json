@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "HTTP API service wrapping the Alpaca trading platform for an agent workflow orchestrator",
+  "description": "Broker gateway wrapping the Alpaca trading platform (equities + crypto)",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
-    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "openapi": "tsx scripts/emit-openapi.ts",
-    "smoke": "tsx --env-file=.env scripts/smoke.ts"
+    "openapi": "bun scripts/emit-openapi.ts",
+    "smoke": "bun scripts/smoke.ts"
   },
   "overrides": {
     "axios": "^1.13.0"
@@ -26,7 +26,6 @@
     "@effect/vitest": "^0.29.0",
     "@types/node": "^26.1.0",
     "eslint": "^10.6.0",
-    "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
     "vitest": "^3.2.6"

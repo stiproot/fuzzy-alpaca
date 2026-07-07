@@ -44,11 +44,15 @@ notes. **DoD:** from `apps/gateway/`, `npm run typecheck && npm test && npm run 
 
 ## Milestone 2 — orchestrator scaffold
 
+Functional style (Effect-flavoured): pure `Result`-returning core, effects at the edges; pragmatic
+flat hex. See CLAUDE.md conventions.
+
 - `apps/orchestrator` uv project: `dapr`, `dapr-ext-workflow`, `fastapi`, `uvicorn`, `httpx`,
-  `pydantic`.
-- **gateway_client.py** — typed `httpx` client: `get_snapshot`, `get_account`, `place_order`,
-  `get_order`, sending `x-api-key`; maps the gateway's error envelope to typed exceptions and
-  reads the `retryable` flag.
+  `pydantic`, `returns`; dev `pytest`, `ruff`, `mypy`.
+- **domain** — frozen models (`PlaceOrder`, `Order`, `GatewayError`) + pure helpers
+  (`client_order_id(instance_id, step) -> str`) returning `Result`.
+- **infrastructure gateway client** — `httpx` calls returning `Result[Order, GatewayError]`,
+  reading the gateway's error envelope + `retryable` flag; no exceptions escape into the core.
 - **dapr/** components: `statestore` (`state.postgresql`, pointed at the compose Postgres) and
   `pubsub` (redis, for later) — shapes referenced from `h/dapr`.
 - **docker-compose.yml** — gateway, orchestrator + its daprd sidecar, postgres, placement.

@@ -37,6 +37,21 @@ Every substantial task (feature, migration, redesign) gets a plan document:
 
 ## Engineering conventions
 
+- **Toolchain is locked in (matching `h`): Bun for JS/TS, uv for Python.** No npm/yarn/pnpm, no
+  pip/poetry. Gateway: `bun install`, `bun run <script>`, Bun runs TS directly (no tsx/ts-node),
+  Dockerfile on `oven/bun`. Python services: `uv sync`, `uv run <tool>`, `uv.lock` committed.
+- **Functional-programming style, Effect-flavoured, in every service.** Gateway: Effect-TS.
+  Python services: an immutable, `Result`-typed **pure core with effects at the edges** — pure
+  functions in `domain`/`application` returning `returns.result.Result` (the typed error channel,
+  like Effect's `E`); frozen models (`pydantic` `frozen=True` / frozen dataclasses); side effects
+  (HTTP, Dapr, DB) confined to `infrastructure` adapters that catch and map into `Result`. No
+  mutable shared state, no exception-driven control flow in the core. Plain serializable data
+  crosses the Dapr activity boundary (Result stays inside the pure composition, like Effect emits
+  plain JSON at the HTTP edge).
+- **Pragmatic hexagonal layout** (per `h`'s services, to avoid deep nesting): a service's `src/`
+  has flat top-level layers — `domain/`, `application/`, `infrastructure/`, `presentation/` — as
+  files, plus a composition-root entrypoint. Do NOT recreate the gateway's deep
+  `adapters/inbound/http/groups/...` tree in new services; keep layers one level deep.
 - Follow the effect-claude-primitives plugin skills for Effect idioms; load the relevant skill
   before writing Effect code in an unfamiliar area.
 - Hexagonal dependency rule and the Alpaca-SDK import quarantine are lint-enforced — do not

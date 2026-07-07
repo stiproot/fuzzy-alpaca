@@ -1,25 +1,21 @@
-# fuzzy-alpaca-core — runs TypeScript directly via tsx (no build step).
-# Stage 1: production dependencies + tsx (the only dev tool needed at runtime).
-FROM node:24-slim AS deps
+# fuzzy-alpaca-core gateway — Bun runs TypeScript directly (no build, no tsx).
+FROM oven/bun:1.3-slim AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm install --no-save tsx@^4.23.0
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
-# Stage 2: runtime.
-FROM node:24-slim AS runtime
+FROM oven/bun:1.3-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 COPY scripts ./scripts
 
-# Non-root (uid in the conventional container range)
-RUN useradd --system --uid 1001 appuser
-USER appuser
+# oven/bun ships a non-root `bun` user
+USER bun
 
 EXPOSE 3000
-# Config comes from the environment (Dapr secret store, k8s env, compose env),
-# read once at boot by AppConfig — no --env-file in the container.
-CMD ["node", "--import", "tsx", "src/index.ts"]
+# Config comes from the environment (Dapr secret store / k8s / compose) — Bun
+# would auto-load a .env if present, but production ships none.
+CMD ["bun", "src/index.ts"]
