@@ -10,9 +10,39 @@ reference for Dapr patterns, not a dependency. See [system-architecture.md](../s
 
 | Milestone | Status | Notes |
 |---|---|---|
-| 1. Monorepo restructure (gateway → apps/gateway) | ⬜ | gateway stays green from new location |
-| 2. Python orchestrator + Dapr + Postgres scaffold | ⬜ | uv app, gateway client, dapr components, compose stack |
-| 3. Walking-skeleton workflow + idempotency proof | ⬜ | place→poll→journal; force retry → idempotentReplay:true |
+| 1. Monorepo restructure (gateway → apps/gateway) | ✅ done (2026-07-07) | gateway green from new location; also migrated to Bun |
+| 2. Python orchestrator + Dapr + Postgres scaffold | ✅ done (2026-07-07) | functional Result-typed core, ruff+mypy-strict clean; compose stack healthy |
+| 3. Walking-skeleton workflow + idempotency proof | ✅ done (2026-07-07) | Live: BTC/USD filled 0.000186451; **replay_confirmed: true**; orders mirror in Postgres |
+
+## Result
+
+End-to-end run against the live paper account through the full stack (gateway + orchestrator +
+daprd sidecar + Postgres + placement + scheduler):
+
+```
+POST /trades {"symbol":"BTC/USD","side":"buy","type":"market","time_in_force":"gtc","notional":"12"}
+→ workflow COMPLETED:
+  { order_id: e8b04968…, client_order_id: "208806f2…-place", status: filled,
+    filled_qty: 0.000186451, replay_confirmed: true }
+```
+
+`replay_confirmed: true` is the proof: the workflow placed twice under the same
+`{instance_id}-place` key and the gateway returned the same order with `idempotent_replay=true` —
+the double-order-on-retry failure demonstrated impossible end-to-end. The orders mirror
+(`orchestrator||order:e8b04968…`) plus the Dapr Workflow engine state persist in Postgres via the
+`state.postgresql` component.
+
+**Deltas from plan:**
+- Bootstrap asserts paper mode via `/v1/whoami` (the gateway's `/v1/account` carries no
+  `tradingMode`).
+- Dapr scheduler needs a world-writable data dir — bind-mount `./dapr-etcd` (chmod 777), matching
+  `h`; a named volume fails with a permission error.
+- Host ports moved to 3001 (gateway) / 8085 (orchestrator) / 5433 (postgres) to avoid colliding
+  with another local stack; the Docker network still uses `gateway:3000` internally.
+- Activities bridge async adapters → sync Dapr activity functions via `asyncio.run` (the effect
+  edge); the pure core stays Result-typed.
+- Dapr activity retry on `place_order` is deliberately kept: a re-run re-derives the same
+  `clientOrderId`, so retry is *safe* and is itself the idempotency mechanism.
 
 ## Target layout
 

@@ -1,0 +1,76 @@
+# fuzzy-alpaca local system stack — gateway (sidecar-less) + orchestrator (+ daprd) + Postgres.
+# The orchestrator calls the gateway over plain HTTP; only the orchestrator joins the Dapr mesh.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: alpaca
+      POSTGRES_PASSWORD: alpaca
+      POSTGRES_DB: alpaca
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alpaca"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  placement:
+    image: daprio/placement:edge
+    command: ["./placement", "--port=50006"]
+
+  scheduler:
+    image: daprio/scheduler:edge
+    command: ["./scheduler", "--port=50007", "--etcd-data-dir=/data"]
+    # Host bind-mount with open perms — the scheduler mkdirs under /data as a
+    # non-root user (matches h's dapr-etcd approach).
+    volumes:
+      - ./dapr-etcd:/data
+
+  gateway:
+    build:
+      context: ./apps/gateway
+    env_file:
+      - ./apps/gateway/.env # APCA paper keys
+    environment:
+      PORT: "3000"
+      SERVICE_API_KEY: "${SERVICE_API_KEY:-dev-service-key}"
+      ALPACA_LIVE: "false"
+    ports:
+      - "3001:3000"
+
+  orchestrator:
+    build:
+      context: ./apps/orchestrator
+    environment:
+      APP_PORT: "8080"
+      GATEWAY_URL: "http://gateway:3000"
+      SERVICE_API_KEY: "${SERVICE_API_KEY:-dev-service-key}"
+      DAPR_HTTP_PORT: "3500"
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+
+  orchestrator-dapr:
+    image: daprio/daprd:edge
+    command:
+      - "./daprd"
+      - "--app-id=orchestrator"
+      - "--app-port=8080"
+      - "--dapr-http-port=3500"
+      - "--placement-host-address=placement:50006"
+      - "--scheduler-host-address=scheduler:50007"
+      - "--resources-path=/components"
+      - "--config=/components/appconfig.yaml"
+      - "--log-level=info"
+    volumes:
+      - ./dapr:/components
+    network_mode: "service:orchestrator"
+    depends_on:
+      - orchestrator
+      - placement
+      - scheduler

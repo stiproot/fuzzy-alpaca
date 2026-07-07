@@ -51,6 +51,10 @@ class Order(Frozen):
 class Account(Frozen):
     buying_power: str
     equity: str
+
+
+class Whoami(Frozen):
+    authenticated: bool
     trading_mode: TradingMode
 
 

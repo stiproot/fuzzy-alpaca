@@ -8,10 +8,12 @@ from typing import Protocol
 
 from returns.result import Result
 
-from orchestrator.domain.models import Account, GatewayError, Order, PlaceOrder
+from orchestrator.domain.models import Account, GatewayError, Order, PlaceOrder, Whoami
 
 
 class GatewayPort(Protocol):
+    async def get_whoami(self) -> Result[Whoami, GatewayError]: ...
+
     async def get_account(self) -> Result[Account, GatewayError]: ...
 
     async def place_order(self, order: PlaceOrder) -> Result[Order, GatewayError]: ...

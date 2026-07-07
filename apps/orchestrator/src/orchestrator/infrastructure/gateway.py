@@ -6,7 +6,7 @@ from __future__ import annotations
 import httpx
 from returns.result import Failure, Result, Success
 
-from orchestrator.domain.models import Account, GatewayError, Order, PlaceOrder
+from orchestrator.domain.models import Account, GatewayError, Order, PlaceOrder, Whoami
 
 
 def _transport_error(message: str) -> GatewayError:
@@ -54,12 +54,19 @@ class GatewayClient:
             return Failure(_transport_error(f"POST {path}: {exc}"))
         return _parse(resp)
 
+    async def get_whoami(self) -> Result[Whoami, GatewayError]:
+        return (await self._get("/v1/whoami")).map(
+            lambda b: Whoami(
+                authenticated=bool(b["authenticated"]),
+                trading_mode=b["tradingMode"],  # type: ignore[arg-type]
+            )
+        )
+
     async def get_account(self) -> Result[Account, GatewayError]:
         return (await self._get("/v1/account")).map(
             lambda b: Account(
                 buying_power=str(b["buyingPower"]),
                 equity=str(b["equity"]),
-                trading_mode=b["tradingMode"],  # type: ignore[arg-type]
             )
         )
 
