@@ -7,7 +7,8 @@ four research reports under [`research/`](research/):
 [equity factors](research/2026-07-08-equity-factors.md) ·
 [LLM/news sentiment](research/2026-07-08-llm-news-sentiment.md) ·
 [event-driven/structural](research/2026-07-08-event-driven-structural.md) ·
-[crypto non-price + base rates](research/2026-07-08-crypto-nonprice-signals.md).
+[crypto non-price + base rates](research/2026-07-08-crypto-nonprice-signals.md) ·
+[vibe-trading exploration](research/2026-07-08-vibe-trading.md).
 
 **Context.** Five cycles established that price/vol/volume TA tops out at OOS Sharpe ≈ 0.43
 (diversified equity mean-reversion basket, DD ~7%, 100% positive folds). The base-rate literature
@@ -22,6 +23,7 @@ tests run first and every kill is cheap.
 | Pri | Candidate | Family | Expected net Sharpe | Gate odds | Build cost | Data |
 |---|---|---|---|---|---|---|
 | ~~1~~ | ~~VIX term-structure overlay on the 0.43 basket~~ — ran as [006](006-vix-regime-overlay.md), **refuted** | regime overlay | — | — | — | ingest built ✓ |
+| **1b** | GTJA-survivor alphas cross-sectional on US large caps (vibe-trading's claimed winners) | cross-sectional microstructure | unknown; IC-level prior only | ~15–25% | M (bar→panel + cross-sectional evaluator, reusable for #4) | already have (Alpaca bars) |
 | 2 | Vol-risk-premium sleeve (SVXY/VIXY timed by VIX3M/VIX) | structural premium | 0.4–0.8 | 35–45% | S (reuses #1's ingest) | CBOE + Alpaca bars |
 | 3 | Overnight-only SPY/QQQ (+ weekend / post-earnings variants) | calendar anomaly | 0.0–0.3 | 10–20% | ~zero | already have |
 | 4 | Long-only multi-factor composite (momentum × low-vol/quality × value) | cross-sectional | 0.5–0.7 (beta-heavy) | ~40%* | M–L (EDGAR ingest) | Alpaca + SEC EDGAR, free |
@@ -41,6 +43,21 @@ variants** — a risk-off filter removes exactly the panic days a mean-reversion
 ~0.02 Sharpe over buy-and-hold. Keep the lesson: regime filters belong on long-beta/carry books,
 not dip-buyers. The macro ingest (`infrastructure/macro.py`) and regime layer
 (`application/regime.py`) are built and reusable — #2 consumes them directly.
+
+### 1b. GTJA-survivor alphas on US large caps (vibe-trading's claimed winners)
+
+**Hypothesis.** The 5 GTJA-191 alphas that survived vibe-trading's 2018–2025 IC study
+(`gtja191_171/111/163/054/002` — microstructure/reversal formulas over OHLCV), computed daily on
+our 57-name basket and held as a long-top-quintile cross-sectional portfolio with real costs,
+clear our gate. **Why queued here.** User directive: the external repo's claimed winners get
+tested first. And it's a *stronger* test than the original claim — US large caps are data the
+alphas were not selected on, removing the survivorship bias their own study admits. **Priors.**
+IC ≠ PnL; ~100% daily turnover meets real costs; theme distribution (microstructure/reversal
+survive, momentum dead) matches our own cycles 4–5, which is mildly encouraging. Pre-register the
+5 alphas + one turnover mitigation (20-day signal smoothing) = N≈10 trials. **Build.** Bar→pandas
+panel adapter + a cross-sectional top-K portfolio evaluator through the same gate — reusable
+verbatim for #4 (multi-factor composite), so the build is amortized.
+[Details](research/2026-07-08-vibe-trading.md).
 
 ### 2. Volatility-risk-premium sleeve via vol ETPs
 
