@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from orchestrator.application.metrics import max_drawdown, sharpe, total_return
 from orchestrator.application.signals import Strategy
+from orchestrator.application.sizing import Sizer, full_size
 from orchestrator.domain.backtest import BacktestConfig, BacktestResult, Trade
 from orchestrator.domain.strategy import Bar
 
@@ -17,6 +18,7 @@ def run_backtest(
     bars: Sequence[Bar],
     signal_fn: Strategy,
     config: BacktestConfig,
+    sizer: Sizer = full_size,
 ) -> BacktestResult:
     cash = config.starting_cash
     qty = 0.0  # >0 == long
@@ -31,15 +33,18 @@ def run_backtest(
         if i >= config.warmup:
             action = signal_fn(bars[: i + 1]).action
             if action == "buy" and qty == 0.0 and cash > 0:
+                # Deploy the sizer's fraction of cash; keep the remainder uninvested (risk lever).
+                invest = cash * max(0.0, min(1.0, sizer(bars[: i + 1])))
                 fill = price * (1 + config.slippage_pct)
-                fee = cash * config.fees_pct
-                qty = (cash - fee) / fill
-                entry_price, entry_ts, cash = fill, bar.ts, 0.0
+                fee = invest * config.fees_pct
+                qty = (invest - fee) / fill
+                entry_price, entry_ts, cash = fill, bar.ts, cash - invest
             elif action == "sell" and qty > 0.0:
                 fill = price * (1 - config.slippage_pct)
                 proceeds = qty * fill
-                cash = proceeds - proceeds * config.fees_pct
-                pnl = cash - qty * entry_price
+                net = proceeds - proceeds * config.fees_pct
+                cash += net
+                pnl = net - qty * entry_price
                 trades.append(
                     Trade(
                         entry_ts=entry_ts, entry_price=entry_price,

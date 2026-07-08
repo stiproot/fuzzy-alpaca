@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from orchestrator.application.backtest import run_backtest
 from orchestrator.application.metrics import max_drawdown, sharpe
 from orchestrator.application.signals import Strategy
+from orchestrator.application.sizing import Sizer, full_size
 from orchestrator.domain.backtest import BacktestConfig, WalkForwardResult
 from orchestrator.domain.strategy import Bar
 
@@ -27,6 +28,7 @@ def walk_forward(
     signal_fn: Strategy,
     config: BacktestConfig,
     folds: int = 4,
+    sizer: Sizer = full_size,
 ) -> WalkForwardResult:
     evaluable = [c for c in _chunks(bars, folds) if len(c) > config.warmup + 2]
 
@@ -39,7 +41,7 @@ def walk_forward(
     level = 1.0
 
     for chunk in evaluable:
-        r = run_backtest(strategy_name, symbol, chunk, signal_fn, config)
+        r = run_backtest(strategy_name, symbol, chunk, signal_fn, config, sizer)
         per_fold_returns.append(r.total_return)
         if r.total_return > 0:
             positive += 1
