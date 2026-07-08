@@ -5,268 +5,38 @@ The running, human-readable log of what we've tried to make paper money — espe
 (the method lives in [`.claude/conventions.md`](../.claude/conventions.md)). Nothing is
 cherry-picked; overfitting is called out, not hidden.
 
+This file is the **log**: one row per experiment, linking the full record in
+[`docs/experiments/`](experiments/) (one file per experiment, from
+[`TEMPLATE.md`](experiments/TEMPLATE.md)). The prioritized queue of researched candidate
+hypotheses lives in [`experiments/backlog.md`](experiments/backlog.md) — pull the next cycle from
+there.
+
 **The bar:** a strategy is only worth trading if it clears the walk-forward **gate**
 (`GateCriteria`: OOS Sharpe ≥ 0.5, positive OOS return, drawdown ≤ 25%, ≥ 5 trades, ≥ 50% positive
 folds) — and holds on data it was **not** selected on. A pass on a single window is a hypothesis,
 not an edge.
 
 Tooling: `apps/orchestrator/scripts/sweep.py` (grid → walk-forward gate),
-`scripts/backtest.py` (single backtest). Both reuse the same pure gate machinery the live workflow
-uses, so a research pass and a live decision agree by construction.
+`scripts/backtest.py` (single backtest), `scripts/portfolio.py` (basket evaluator). All reuse the
+same pure gate machinery the live workflow uses, so a research pass and a live decision agree by
+construction.
 
----
+## Log
 
-## Experiment 1 — Do any naive TA configs clear the gate on crypto? (2026-07-08)
+| # | Date | Question | Verdict |
+|---|---|---|---|
+| [001](experiments/001-naive-ta-crypto.md) | 2026-07-08 | Do any naive TA configs clear the gate on crypto? | **Refuted** — 2/72 short-window passes evaporated on deep data; naive price-TA has no edge |
+| [002](experiments/002-beyond-price-signals-crypto.md) | 2026-07-08 | Do signals beyond price clear the gate on crypto? | **Blocked** — real 1Day edge (Sharpe to 0.81) killed solely by 45–78% drawdowns; intraday dead |
+| [003](experiments/003-volatility-targeting-crypto.md) | 2026-07-08 | Does volatility targeting clear the gate on crypto? | **Refuted** — sizing trades Sharpe for DD one-for-one; crypto price-TA track closed (0/224 across cycles 1–3) |
+| [004](experiments/004-equities-signal-sweep.md) | 2026-07-08 | Do the same signals clear the gate on equities? | **Partial** — 7/260 single-name passes (tails); durable finding: broad weak bollinger-reversion edge (15/18 names positive) |
+| [005](experiments/005-diversified-basket.md) | 2026-07-08 | Does a diversified basket lift the weak edge over the gate? | **Near-miss** — 0.43–0.50 OOS Sharpe, DD 6–7%, 100% +folds; gate held at Sharpe < 0.5 |
 
-**Hypothesis.** Our three strategies (sma_crossover, momentum, mean_reversion) fail on BTC/1Day
-with default params, but the defaults are arbitrary. A modest, principled sweep of
-(strategy × params) over BTC/ETH/LTC/SOL on 1Hour + 1Day might reveal a config that clears the
-OOS gate — or confirm naive TA has no edge here.
+## Where we stand
 
-**Method.** 72 configs (9 strategy/param variants × 4 symbols × 2 timeframes) through
-`walk_forward` + the real gate. First pass used ~400 bars per series.
-
-**Result — the trap, then the truth.**
-
-- On **~400 bars**, **2 / 72 passed**: `meanrev_10 / BTC/USD / 1Hour` (OOS Sharpe 0.96, +2.1%) and
-  `meanrev_20 / ETH/USD / 1Hour` (0.85, +3.5%). Tempting: same strategy family, same timeframe, two
-  independent majors — looked coherent.
-- **Confirmation on ~1000 bars (≈6 weeks of hourly)** — the honesty step — **refuted it
-  completely**. Every mean-reversion config now blocks with strongly negative OOS Sharpe:
-
-  | config | OOS return | OOS Sharpe | trades | gate |
-  |---|---|---|---|---|
-  | meanrev_10 / BTC/USD / 1H | −2.9% | −3.33 | 3 | block |
-  | meanrev_20 / ETH/USD / 1H | −5.7% | −1.85 | 5 | block |
-  | meanrev_10 / ETH/USD / 1H | −9.0% | −2.82 | 14 | block |
-  | (…all 8 mean-rev configs on deep data) | negative | −1.6 to −3.3 | — | block |
-
-**Conclusion.** **No robust edge.** The two 400-bar passes were short-window false positives —
-classic multiple testing (try 72 things, 2 look good by luck) — and they **evaporated on more
-data**. Naive price-only TA (crossover / momentum / mean-reversion) does **not** beat fees on the
-crypto symbols/timeframes/params tested.
-
-**Why this is a *good* result.** The gate + hold-out confirmation caught a mirage **before** a
-single dollar of paper money touched it. This is the safety machinery working exactly as designed —
-and it's why we don't run live experiments on strategies that only look good in-sample.
-
-**Improve (done this cycle).** Encoded the lesson in `sweep.py`: it now evaluates on **deep
-windows (1000 bars) by default**, so short-window flukes don't surface as passes, and prints a
-multiple-testing caveat with the pass count. The 400-bar false positives no longer appear.
-
-**Next hypothesis (cycle 2).** Naive price-only TA looks exhausted on these assets. Options to
-research: (a) signals beyond price — volatility regime, volume, cross-asset — since pure
-price-TA edge on liquid crypto is largely arbitraged away; (b) longer-horizon or
-different-universe (equities) where these patterns historically held better; (c) accept that easy
-edge is absent and treat the system's value as the safety/execution infrastructure, pursuing edge
-as a separate, ongoing research track. Decide and document before running.
-
----
-
-## Experiment 2 — Do signals *beyond price* clear the gate on crypto? (2026-07-08)
-
-**Hypothesis.** Close-only TA is arbitraged away (Experiment 1). The `Bar` already carries
-high/low/volume, unused by the price-only strategies. Signals that read those — **channel
-breakout** (Donchian, trend), **volatility-scaled reversion** (Bollinger z-score), and
-**volume-confirmed momentum** — might capture a structural edge the close-only families miss.
-
-**Method.** Three new signals added (`donchian_breakout`, `bollinger_reversion`, `volume_momentum`),
-9 configs × 4 symbols (BTC/ETH/LTC/SOL) × 2 timeframes = 72, through the same walk-forward gate on
-~1000 deep bars. **Also fixed a calibration bug first:** `periods_per_year` was hard-coded to 252
-(daily) but the sweep evaluates 1Hour series too, under-annualizing hourly Sharpe by ~√(8760/252) ≈
-5.9×. Annualization is now timeframe-aware (`periods_per_year()`), so the metric no longer lies —
-prerequisite for an honest search.
-
-**Result — 0 / 72 passed, but the failure mode moved.** The calibration fix made every 1Hour config
-resolve to a strongly negative Sharpe (−1 to −18): **intraday is dead**, unambiguously. On **1Day**,
-the beyond-price signals produced genuine near-misses — and every one blocks on **one** criterion:
-drawdown.
-
-  | config | tf | OOS ret | Sharpe | maxDD | trades | +folds | blocks on |
-  |---|---|---|---|---|---|---|---|
-  | bollinger_20_2 / ETH | 1D | +57.8% | **0.60** | 44.6% | 16 | **75%** | DD 44.6% > 25% |
-  | donchian_20_10 / ETH | 1D | +38.6% | 0.49 | 47.7% | 12 | 50% | DD + Sharpe |
-  | donchian_20_10 / SOL | 1D | +4192% | **0.81** | 67.9% | 11 | 50% | DD 67.9% > 25% |
-  | momentum_20 / SOL | 1D | +2672% | 0.79 | 77.6% | 46 | 50% | DD 77.6% > 25% |
-
-**Conclusion.** Still no strategy clears the full gate — but for a **different, more informative
-reason**. Cycle 1 failed on *return/Sharpe* (no directional edge at all). Cycle 2's best
-beyond-price configs **clear Sharpe, positive-return, trade-count and positive-fold** — the edge is
-real enough — and are killed **solely by drawdown**. Long-only crypto delivers its trend returns
-bundled with 45–78% drawdowns; a 25% max-DD gate (correctly) refuses that risk. And the one config
-that clears Sharpe on ETH (bollinger_20_2) does **not** generalize — BTC 0.23, LTC 0.32, SOL 0.01 —
-so it isn't a robust edge even on Sharpe alone.
-
-**Why this matters.** The binding constraint is no longer "is there a signal?" but "can we take the
-signal at a risk the gate accepts?" That points at the **missing lever**: the backtest engine is
-all-in long-flat (100% cash → 100% position, no stop). Drawdown is unmanaged by construction.
-
-**Improve (done this cycle).** (1) Timeframe-aware Sharpe annualization — hourly is now measured
-honestly. (2) Three beyond-price signals added to the strategy registry and the sweep, all
-gate-evaluated by the same machinery the live path uses.
-
-**Next hypothesis (cycle 3).** The gate is asking for **risk management, not more signal**. Add a
-position-sizing / stop layer to the engine — volatility targeting (size ∝ 1/recent-vol), a fractional
-Kelly-style cap, or an ATR trailing stop — and re-sweep the *existing* daily signals. Question: can
-capping drawdown to ≤25% preserve enough of bollinger/donchian's daily return to clear the full gate?
-If even risk-managed long-only crypto can't, that is strong evidence to widen the universe (equities,
-where trend historically survives risk control) or accept infra-as-deliverable.
-
----
-
-## Experiment 3 — Does risk management (volatility targeting) clear the gate on crypto? (2026-07-08)
-
-**Hypothesis.** Experiment 2's beyond-price daily signals cleared every gate criterion *except*
-drawdown. If drawdown is the only blocker, sizing exposure by risk — deploy `target_vol /
-recent_realized_vol` of capital, so exposure falls in turbulent regimes — should pull drawdown under
-25% while keeping enough return/Sharpe to pass.
-
-**Method.** Added a pure position-sizing layer to the backtest engine (`application/sizing.py`;
-default `full_size` = all-in, so the live path and all prior results are unchanged). Volatility
-targeting at annualized targets 0.40 and 0.25 applied to the two best daily families
-(`bollinger_20_2`, `donchian_20_10`); 80 configs total through the same gate.
-
-**Result — 0 / 80 passed. Vol targeting works, but only moves *along* the frontier.** On the one
-asset with any edge, ETH/1Day, sizing traded Sharpe for drawdown one-for-one:
-
-  | config | OOS ret | Sharpe | maxDD | +folds | verdict |
-  |---|---|---|---|---|---|
-  | bollinger_20_2 (all-in) | +57.8% | **0.60** | 44.6% | 75% | fails DD |
-  | bollinger_20_2 .vt40 | +22.8% | 0.47 | 28.8% | 75% | fails DD **and** Sharpe |
-  | bollinger_20_2 .vt25 | +12.9% | 0.40 | **18.5%** | 75% | fails Sharpe |
-  | donchian_20_10 .vt25 | +21.5% | 0.45 | **24.3%** | 50% | fails Sharpe |
-
-There is **no** setting where Sharpe ≥ 0.5 and DD ≤ 25% hold together — the risk/return frontier
-passes just *below* the gate's corner. And ETH is the only symbol with positive Sharpe at all
-(BTC .vt25 0.24, LTC 0.18, SOL negative), so even the near-miss doesn't generalize.
-
-**Conclusion — the crypto price/vol/volume TA track is exhausted.** Across three cycles we have now
-shown, on BTC/ETH/LTC/SOL: (1) naive close-only TA has no directional edge; (2) beyond-price signals
-have a real but drawdown-heavy edge on ETH that fails on risk; (3) risk management can tame the
-drawdown but only by lowering Sharpe in lockstep — it cannot manufacture risk-adjusted edge. The
-honest verdict: **no robust, generalizing strategy clears the gate on these crypto majors with
-price-derived signals, with or without risk control.** The gate has, correctly, refused all 224
-configs tried across the three cycles.
-
-**Why this is the right outcome.** The machinery keeps doing its job: it distinguishes "looks
-profitable" (SOL riding a bull run, +4192%) from "is a robust risk-adjusted edge" (nothing), and it
-never let a single unproven config near the money path.
-
-**Improve (done this cycle).** Position-sizing abstraction in the engine (`Sizer`), a volatility-
-target sizer, threaded through backtest → walk-forward → sweep, unit-tested — reusable for any future
-universe, and defaulted off so live order safety is untouched.
-
-**Next hypothesis (cycle 4).** Change the **universe**, not the signal. Trend-following on **equity
-indices / large-cap ETFs** is the most robustly documented systematic edge and historically survives
-a 25% drawdown gate (managed-futures / time-series momentum). The gateway already serves equity bars
-(verified SPY/QQQ/AAPL). Re-run the *same* signals + risk layer on daily equities with equity-session
-annualization (252/yr). If trend clears the gate on equities, that is the first genuine trial
-candidate; if not, the evidence favors treating the safety/execution infrastructure as the
-deliverable and pursuing edge (cross-asset, funding, on-chain, alternative data) as a separate track.
-
----
-
-## Experiment 4 — Do the signals clear the gate on equities? (2026-07-08)
-
-**Hypothesis.** Crypto price-TA is exhausted (Exp 1-3). Equities have structurally smaller drawdowns
-and documented trend/reversion effects; the *same* signals + risk layer, on daily large-caps with
-equity-session annualization (252/yr), might finally clear the gate.
-
-**Method.** Added an asset-class-aware universe loop to the sweep (`periods_per_year(tf,
-asset_class)`). Ran the full 10-config grid first on 5 equities, then on a **held-out cross-sector
-basket of 18 large-caps** (SPY QQQ AAPL MSFT NVDA GOOGL AMZN META JPM JNJ XOM KO WMT HD PG V UNH COST).
-
-**Result — the first gate passes, but all single-name.** 7 / 260 configs passed:
-
-  | strategy | symbol | OOS ret | Sharpe | maxDD | +folds | family |
-  |---|---|---|---|---|---|---|
-  | donchian_20_10 (×3 sizings) | COST | +103.4% | **0.66** | 10.2% | 100% | trend |
-  | momentum_20 | COST | +89.0% | 0.54 | 14.3% | 100% | trend |
-  | bollinger_20_2 (×3 sizings) | MSFT | +66.2% | **0.53** | 13.4% | 100% | reversion |
-
-Two things are immediately true and important: (1) **equity drawdowns are gate-compatible by
-construction** — most configs sit at 9-25% DD, not crypto's 45-78%; the DD wall that blocked cycle 2-3
-is largely gone. (2) Every pass is a **single name** — COST (an unusually smooth trender) and MSFT —
-which is exactly the multiple-testing pattern the gate's caveat warns about.
-
-**The signal in the noise.** Looking past individual passes to the *distribution*, one family stands
-out: **bollinger mean-reversion is positive on 15 of 18 held-out names** (mean OOS Sharpe 0.19,
-returns positive on 15/18, drawdowns mostly <25%). Pure noise would scatter Sharpe symmetrically
-around zero; this is clearly **right-skewed positive** — a real but *weak* per-name edge, of which
-MSFT (0.53) is the right tail. Trend (donchian/momentum) does *not* show this breadth — it is negative
-on many names (NVDA -77%, MSFT -3%) and only COST clears; those passes are isolated tails.
-
-**Conclusion.** Equities give us the first genuine gate passes — but **no single-name pass should be
-trialed as-is**: MSFT-bollinger and COST-trend are the right tails of 260 tries. The durable finding
-is that **bollinger mean-reversion is a broad, weak, positive edge across large-caps**. A weak edge
-that is *consistently* positive across many low-correlation names is the textbook setup for
-**diversification**: an equal-weight basket averages 15 positive-expectancy streams, so the portfolio
-Sharpe should exceed any single name's and plausibly clear the gate *robustly* — not by overfitting to
-one ticker.
-
-**Improve (done this cycle).** Sweep is now asset-class-aware (crypto + equity universes, correct
-annualization each). The whole signal + risk stack runs unchanged across both.
-
-**Next hypothesis (cycle 5).** Build a **portfolio** evaluation: run bollinger mean-reversion on every
-name in the large-cap basket, equal-weight the per-name OOS curves into one portfolio curve, and gate
-*that*. Question: does diversifying the weak-but-broad per-name edge lift the portfolio OOS Sharpe
-clear of 0.5 with DD ≤ 25%? If yes, the diversified basket — not any single ticker — is the first
-strategy worth a gated paper trial. If even the basket falls short, the honest verdict is that the
-system's value is the safety/execution infrastructure, with edge pursued as a separate data track.
-
----
-
-## Experiment 5 — Does a diversified basket lift the weak edge over the gate? (2026-07-08)
-
-**Hypothesis.** bollinger mean-reversion is positive on ~75-83% of large-caps but weak per name
-(Exp 4). An equal-weight, daily-rebalanced *basket* should diversify away idiosyncratic noise and lift
-the portfolio OOS Sharpe over 0.5 while keeping drawdown low.
-
-**Method.** Added `portfolio_walk_forward` (pure): each name runs the same long-flat strategy as an
-independent 1/N sleeve (idle in cash when flat); the portfolio bar return is the mean of sleeve bar
-returns; the stitched OOS curve goes through the *same* gate. Ran `scripts/portfolio.py` on an 18-name
-mega-cap basket, then a **57-name broad cross-sector basket**, and tested equal-weight vs risk-parity
-(per-sleeve volatility-normalized) weighting.
-
-**Result — diversification works exactly as predicted, and lands just under the bar.**
-
-  | basket | weighting | names+ | OOS ret | Sharpe | maxDD | +folds | gate |
-  |---|---|---|---|---|---|---|---|
-  | 18 mega-caps | equal | 15/18 | +24.0% | **0.50** | 6.5% | 100% | block (0.50 < 0.5) |
-  | 57 broad | equal | 43/57 | +14.9% | **0.43** | 7.1% | 100% | block |
-  | 57 broad | risk-parity .15 | 42/57 | +11.7% | 0.40 | 6.3% | 75% | block |
-  | 57 broad | risk-parity .10 | 42/57 | +8.4% | 0.38 | 4.7% | 75% | block |
-
-Diversification did its job: it collapsed drawdown from single-name 13-40% to **6-7%** and gave
-**100% positive folds** — the basket made money in every out-of-sample window. But it cannot
-manufacture Sharpe the raw signal lacks: the mega-cap 0.50 was mild name selection; the fair
-broad-universe number is **0.43**. Risk-parity weighting only trades return for lower drawdown (Sharpe
-drifts *down*) because these large-caps are already similar-vol — it is not the missing lever. Only
-mean-reversion diversifies at all; momentum/trend/naive-meanrev baskets sit at or below zero Sharpe.
-
-**Conclusion — the price-derived TA arc is closed, honestly.** Across five cycles and 300+ configs and
-baskets on crypto and equities, the strongest robust, out-of-sample, generalizing result is a
-diversified equity mean-reversion basket at **OOS Sharpe ≈ 0.43-0.50, drawdown ~7%, 100% positive
-folds** — a *genuine but sub-threshold* edge. It clears every gate criterion **except** Sharpe, and no
-weighting scheme closes the last hair. **The gate held.** It refused a candidate (the 18-name 0.50)
-that a careless process would have traded, correctly exposing it as name-selection-inflated the moment
-it faced a fair broad universe.
-
-**Why this is the deliverable working.** The machinery took a weak, real signal all the way to its
-honest ceiling and then *stopped* — no overfitting, no cherry-picked ticker, no in-sample mirage
-reached the money path. The near-miss is itself the most useful signal we have: the edge is real and
-low-risk; it just needs a **better signal**, not better plumbing or more leverage.
-
-**Improve (done this cycle).** `portfolio_walk_forward` — a pure, gate-compatible basket evaluator
-(equal-weight or risk-parity via the existing sizer), unit-tested (identical-sleeves invariant;
-diversification never increases drawdown).
-
-**Next hypothesis (cycle 6).** Price/vol/volume TA is exhausted as an edge source; its ceiling is
-~0.43 Sharpe diversified. The productive direction is a **richer signal**, pursued as a separate track:
-(a) fundamentals / cross-sectional ranking (value, quality, earnings drift); (b) cross-asset or
-macro state (rates, credit, breadth); (c) the DeepSeek research agent proposing *non-price* features
-to test through this same gate. The infrastructure — gateway, gate, walk-forward, portfolio evaluator,
-sizing — is proven and reusable; edge is now a data problem, not a plumbing one. Meanwhile the
-diversified mean-reversion basket (0.43, DD 7%, 100% folds) is the strongest paper-trial *candidate*
-on record — worth a **gated, clearly-labelled sub-threshold observation run** if we want live-behavior
-data, but it must not be presented as a gate-cleared strategy.
+Across five cycles, 300+ configs and baskets on crypto + equities: **price/vol/volume TA is
+exhausted as an edge source.** Its honest ceiling is the diversified equity bollinger
+mean-reversion basket — **OOS Sharpe ≈ 0.43, drawdown ~7%, 100% positive folds** — genuine but
+sub-threshold; the strongest paper-trial *candidate* on record (a clearly-labelled sub-threshold
+observation run is defensible; presenting it as gate-cleared is not). The gate has refused every
+config, correctly. Edge is now a **data problem, not a plumbing problem**: the next cycles pursue
+richer signals — see the [backlog](experiments/backlog.md).

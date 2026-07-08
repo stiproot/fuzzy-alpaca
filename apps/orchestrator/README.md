@@ -31,7 +31,8 @@ GATEWAY_URL=http://localhost:3001 SERVICE_API_KEY=dev-service-key \
 The heart of the [research loop](../../README.md#how-we-find-edge--the-research-loop). All three
 scripts reuse the *same* pure evaluation machinery the live workflow uses, so a research pass and a
 live decision agree by construction. The walk-forward gate is the arbiter; read the running log of
-what we've tried (and refuted) in [../../docs/experiments.md](../../docs/experiments.md).
+what we've tried (and refuted) in [../../docs/experiments.md](../../docs/experiments.md), which
+links one detailed file per experiment under `docs/experiments/`.
 
 | Script | Purpose |
 |---|---|
