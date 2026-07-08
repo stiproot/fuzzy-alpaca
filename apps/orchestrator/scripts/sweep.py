@@ -34,8 +34,18 @@ from orchestrator.domain.strategy import Bar, Signal
 from orchestrator.infrastructure.bars import lookback_start, url_symbol
 from orchestrator.infrastructure.gateway import GatewayClient
 
-SYMBOLS = ["BTC/USD", "ETH/USD", "LTC/USD", "SOL/USD"]
-TIMEFRAMES = ["1Day", "1Hour"]
+# Universes: (asset_class, symbols, timeframes). asset_class drives Sharpe annualization —
+# crypto trades 24/7 (1Day=365), equities only the regular session (1Day=252). Cycle 4 adds
+# equities: trend-following historically survives a drawdown gate there, unlike crypto (Exp 1-3).
+UNIVERSES: list[tuple[str, list[str], list[str]]] = [
+    ("crypto", ["BTC/USD", "ETH/USD", "LTC/USD", "SOL/USD"], ["1Day", "1Hour"]),
+    # Broad cross-sector large-cap basket. bollinger_20_2 cleared the gate on MSFT (cycle 4);
+    # these are the held-out names that test whether that is a real edge or a single-symbol fluke.
+    ("equity", [
+        "SPY", "QQQ", "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "JPM",
+        "JNJ", "XOM", "KO", "WMT", "HD", "PG", "V", "UNH", "COST",
+    ], ["1Day"]),
+]
 # Cycle-1 lesson (see docs/experiments.md): a short window manufactures false positives that
 # evaporate on more data. Evaluate deep by default so a "pass" means something.
 BARS = 1000
@@ -69,33 +79,34 @@ async def main() -> None:
     criteria = GateCriteria()
     rows: list[tuple[float, str, str, str, bool, float, float, float, int, float]] = []
 
-    for symbol in SYMBOLS:
-        for tf in TIMEFRAMES:
-            # Annualize Sharpe to the bar timeframe — a 1Hour bar is not a day (cycle-2 fix).
-            config = BacktestConfig(periods_per_year=periods_per_year(tf))
-            fetched = await gateway.get_bars(
-                url_symbol(symbol), tf, limit=min(1000, BARS * 2),
-                start=lookback_start(tf, BARS),
-            )
-            if not is_successful(fetched):
-                print(f"  skip {symbol}/{tf}: {fetched.failure().message}")
-                continue
-            bars = fetched.unwrap()[-BARS:]
-            if len(bars) < 120:
-                print(f"  skip {symbol}/{tf}: only {len(bars)} bars")
-                continue
-            for label, fn, target_vol in CONFIGS:
-                sizer: Sizer = (
-                    full_size if target_vol is None
-                    else vol_target_sizer(target_vol, VOL_WINDOW, config.periods_per_year)
+    for asset_class, symbols, timeframes in UNIVERSES:
+        for symbol in symbols:
+            for tf in timeframes:
+                # Annualize Sharpe to timeframe AND asset class (crypto 24/7 vs equity session).
+                config = BacktestConfig(periods_per_year=periods_per_year(tf, asset_class))
+                fetched = await gateway.get_bars(
+                    url_symbol(symbol), tf, limit=min(1000, BARS * 2),
+                    start=lookback_start(tf, BARS),
                 )
-                oos = walk_forward(label, symbol, bars, fn, config, sizer=sizer)
-                v = evaluate(oos, criteria)
-                rows.append(
-                    (oos.oos_sharpe, label, symbol, tf, v.passed, oos.oos_return,
-                     oos.oos_sharpe, oos.oos_max_drawdown, oos.oos_trades,
-                     oos.positive_folds_frac)
-                )
+                if not is_successful(fetched):
+                    print(f"  skip {symbol}/{tf}: {fetched.failure().message}")
+                    continue
+                bars = fetched.unwrap()[-BARS:]
+                if len(bars) < 120:
+                    print(f"  skip {symbol}/{tf}: only {len(bars)} bars")
+                    continue
+                for label, fn, target_vol in CONFIGS:
+                    sizer: Sizer = (
+                        full_size if target_vol is None
+                        else vol_target_sizer(target_vol, VOL_WINDOW, config.periods_per_year)
+                    )
+                    oos = walk_forward(label, symbol, bars, fn, config, sizer=sizer)
+                    v = evaluate(oos, criteria)
+                    rows.append(
+                        (oos.oos_sharpe, label, symbol, tf, v.passed, oos.oos_return,
+                         oos.oos_sharpe, oos.oos_max_drawdown, oos.oos_trades,
+                         oos.positive_folds_frac)
+                    )
 
     rows.sort(reverse=True)
     print(f"\n  {'strategy':20} {'sym':8} {'tf':6} {'ret':>8} {'sharpe':>7} "
