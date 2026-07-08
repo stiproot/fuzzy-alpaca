@@ -24,7 +24,7 @@ tests run first and every kill is cheap.
 |---|---|---|---|---|---|---|
 | ~~1~~ | ~~VIX term-structure overlay on the 0.43 basket~~ — ran as [006](006-vix-regime-overlay.md), **refuted** | regime overlay | — | — | — | ingest built ✓ |
 | ~~1b~~ | ~~GTJA-survivor alphas on US large caps~~ — ran as [007](007-gtja-survivors-us.md), **refuted** (0/10) | cross-sectional | — | — | evaluator built ✓ | — |
-| 2 | Vol-risk-premium sleeve (SVXY/VIXY timed by VIX3M/VIX) | structural premium | 0.4–0.8 | 35–45% | S (reuses #1's ingest) | CBOE + Alpaca bars |
+| ~~2~~ | ~~Vol-risk-premium sleeve (SVXY timed by VIX3M/VIX)~~ — ran as [008](008-vol-risk-premium.md), **refuted** (timing subtracts value) | structural premium | — | — | — | — |
 | 3 | Overnight-only SPY/QQQ (+ weekend / post-earnings variants) | calendar anomaly | 0.0–0.3 | 10–20% | ~zero | already have |
 | 4 | Long-only multi-factor composite (momentum × low-vol/quality × value) | cross-sectional | 0.5–0.7 (beta-heavy) | ~40%* | M–L (EDGAR ingest) | Alpaca + SEC EDGAR, free |
 | 5 | DeepSeek news-sentiment signal (Alpaca News API) | LLM/text | 0.4–0.8 (decaying) | ~30% | M (news ingest + scorer) | Alpaca News, free; LLM ~$100–400 backfill |
@@ -54,16 +54,15 @@ bull windows**, so long-only equity candidates must beat the SPY *and* hold-all 
 just 0.5. The cross-sectional evaluator (`application/cross_sectional.py`) and causal alpha layer
 (`application/alphas.py`) are built, tested, and ready for #4.
 
-### 2. Volatility-risk-premium sleeve via vol ETPs
+### ~~2. Volatility-risk-premium sleeve via vol ETPs~~ — refuted
 
-**Hypothesis.** Long SVXY when VIX3M/VIX > threshold (contango), flat otherwise, vol-targeted to
-~5–8% ann. via the existing sizer, clears the gate as a standalone sleeve. **Why.** The
-best-documented *structural* (not statistical) premium accessible without options: VIX futures in
-contango ~80% of the time; literature Sharpe 0.4–0.8 net; daily-bar native; SVXY/VIXY are ordinary
-Alpaca equities. **Risks.** Gap risk *is* the strategy (XIV −96% in one session, Feb 2018);
-premium thinner post-2018; must backtest on real ETP bars (path-dependence), and sizing must
-assume the day the signal can't save you — the 25% DD criterion is doing real work here.
-[Details](research/2026-07-08-event-driven-structural.md) §6.
+**Ran as [experiment 008](008-vol-risk-premium.md) (2026-07-08): refuted, 0/3 — the timing signal
+subtracts value.** Day-lagged contango timing is structurally late: it sells the crash bottom
+(backwardation appears after the spike) and re-buys after the rebound (contango restored late).
+Timed Sharpe ≈ 0 with DD *worse* than unfiltered SVXY (+37%, 0.23). The refutation covers
+daily-close term-structure timing of vol ETPs generally — the failure is the lag structure, not
+the threshold. Standing lesson: **a timing overlay must beat the untimed instrument on Sharpe and
+drawdown** (null-instrument control, now a standard decision-rule element).
 
 ### 3. Overnight-only SPY/QQQ
 

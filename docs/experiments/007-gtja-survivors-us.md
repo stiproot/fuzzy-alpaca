@@ -5,7 +5,7 @@
 | **Date** | 2026-07-08 |
 | **Status** | refuted — 0/10 trials pass; best variant undercuts the passive control |
 | **One-liner** | GTJA IC survivors don't transfer as US PnL: turnover×costs kills raw variants, and even the best smoothed one (0.44) sits below hold-all equal-weight (0.60) — which itself "passes" the gate, exposing that absolute Sharpe passes beta in bull windows |
-| **Prev / Next** | [006](006-vix-regime-overlay.md) / [backlog](backlog.md) |
+| **Prev / Next** | [006](006-vix-regime-overlay.md) / [008 — vol risk premium](008-vol-risk-premium.md) |
 
 **Hypothesis.** The 5 GTJA-191 alphas that survived vibe-trading's 2018–2025 CSI-300 IC study
 (`gtja191_171/111/163/054/002` — microstructure/reversal formulas over daily OHLCV;

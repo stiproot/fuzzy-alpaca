@@ -32,17 +32,19 @@ construction.
 | [005](experiments/005-diversified-basket.md) | 2026-07-08 | Does a diversified basket lift the weak edge over the gate? | **Near-miss** — 0.43–0.50 OOS Sharpe, DD 6–7%, 100% +folds; gate held at Sharpe < 0.5 |
 | [006](experiments/006-vix-regime-overlay.md) | 2026-07-08 | Does a macro risk-regime overlay lift the basket over the gate? | **Refuted** — risk-off filters amputate mean-reversion's profit engine (0.43 → 0.06/0.33); new SPY control shows the basket is only ~0.02 over beta on Sharpe |
 | [007](experiments/007-gtja-survivors-us.md) | 2026-07-08 | Do vibe-trading's surviving GTJA alphas work cross-sectionally on US large caps? | **Refuted** — 0/10 trials; costs kill raw turnover, best smoothed variant (0.44) < hold-all control (0.60), which itself gate-passes: absolute Sharpe passes beta in bull windows |
+| [008](experiments/008-vol-risk-premium.md) | 2026-07-08 | Does term-structure-timed short-vol (SVXY) clear the gate? | **Refuted** — 0/3; day-lagged timing sells crash bottoms and re-buys after rebounds: timed Sharpe ≈ 0 / DD 57–72% vs unfiltered +37% / 0.23 — the signal subtracts value |
 
 ## Where we stand
 
-Across seven cycles, 300+ configs and baskets on crypto + equities: **price/vol/volume TA is
-exhausted as an edge source**, macro risk-off overlays on a dip-buyer are refuted (cycle 6), and
-external claimed winners (vibe-trading's GTJA IC survivors) failed to transfer as US PnL
-(cycle 7, 0/10). The strongest sub-threshold result remains the bollinger basket (0.43, DD ~7%,
-100% +folds) — but the cycle 6–7 **controls reframed the whole equity track**: SPY buy-and-hold
-scores ~0.4 and hold-all equal-weight of the 57-name universe scores **0.60 and passes the gate
-outright** on this window. Absolute Sharpe passes passive beta in bull windows, so for long-only
-equity candidates the binding bar is now **beating the SPY and hold-all controls on identical
-folds**, not 0.5. The gate + controls have refused every strategy, correctly. Next up
-([backlog](experiments/backlog.md)): the vol-risk-premium sleeve (non-equity-beta, macro ingest
-already built), then the multi-factor composite through the new cross-sectional evaluator.
+Across eight cycles, 300+ configs and baskets on crypto + equities: **price/vol/volume TA is
+exhausted as an edge source**, macro risk-off overlays on a dip-buyer are refuted (006), external
+claimed winners failed to transfer as US PnL (007, 0/10), and daily-lagged term-structure timing
+of vol ETPs *subtracts* value (008 — sells crash bottoms, re-buys after rebounds). The strongest
+sub-threshold result remains the bollinger basket (0.43, DD ~7%, 100% +folds) — but the cycle 6–8
+**controls reframed everything**: SPY buy-and-hold scores ~0.4, hold-all equal-weight of the
+57-name universe scores **0.60 and passes the gate outright**, and unfiltered SVXY beats its own
+timed version. Standing decision rules: long-only equity candidates must **beat SPY and hold-all
+on identical folds**; timing overlays must **beat the untimed instrument on Sharpe and drawdown**.
+The gate + controls have refused every strategy, correctly. Next up
+([backlog](experiments/backlog.md)): the long-only multi-factor composite (momentum × low-vol,
+prices-only first) through cycle 7's cross-sectional evaluator, judged against the hold-all bar.
