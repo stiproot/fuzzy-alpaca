@@ -69,6 +69,7 @@ def strategy_tick(
             input={
                 "strategy": strategy,
                 "symbol": symbol,
+                "timeframe": timeframe,
                 "bars": bars,
                 "criteria": tick_input.get("criteria", {}),
             },

@@ -153,13 +153,13 @@ def gate_activity(_ctx: wf.WorkflowActivityContext, payload: dict[str, Any]) -> 
     result, and return the verdict. The workflow refuses to place when this blocks."""
     from orchestrator.application.gate import evaluate
     from orchestrator.application.walkforward import walk_forward
-    from orchestrator.domain.backtest import BacktestConfig
+    from orchestrator.domain.backtest import BacktestConfig, periods_per_year
     from orchestrator.domain.gate import GateCriteria
 
     strategy = payload["strategy"]
     symbol = payload["symbol"]
     bars = [Bar(**b) for b in payload["bars"]]
-    config = BacktestConfig()
+    config = BacktestConfig(periods_per_year=periods_per_year(payload.get("timeframe", "1Day")))
     oos = walk_forward(strategy, symbol, bars, STRATEGIES[strategy], config)
     verdict = evaluate(oos, GateCriteria(**payload.get("criteria", {})))
     return {

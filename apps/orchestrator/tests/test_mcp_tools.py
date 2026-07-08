@@ -5,7 +5,10 @@ from orchestrator.presentation import mcp_tools
 
 def test_list_strategies() -> None:
     out = mcp_tools.list_strategies()
-    assert set(out["strategies"]) == {"sma_crossover", "momentum", "mean_reversion"}
+    assert set(out["strategies"]) == {
+        "sma_crossover", "momentum", "mean_reversion",
+        "donchian_breakout", "bollinger_reversion", "volume_momentum",
+    }
 
 
 async def test_backtest_unknown_strategy_returns_error() -> None:

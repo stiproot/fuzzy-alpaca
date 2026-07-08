@@ -13,7 +13,7 @@ from orchestrator.application.backtest import run_backtest
 from orchestrator.application.gate import evaluate
 from orchestrator.application.signals import STRATEGIES
 from orchestrator.application.walkforward import walk_forward
-from orchestrator.domain.backtest import BacktestConfig
+from orchestrator.domain.backtest import BacktestConfig, periods_per_year
 from orchestrator.domain.gate import GateCriteria
 from orchestrator.infrastructure.bars import lookback_start, url_symbol
 from orchestrator.infrastructure.config import load_settings
@@ -78,7 +78,8 @@ async def backtest(
     fetched = await _bars(symbol, timeframe, bars_count)
     if not is_successful(fetched):
         return {"error": fetched.failure().message}
-    r = run_backtest(strategy, symbol, fetched.unwrap(), STRATEGIES[strategy], BacktestConfig())
+    config = BacktestConfig(periods_per_year=periods_per_year(timeframe))
+    r = run_backtest(strategy, symbol, fetched.unwrap(), STRATEGIES[strategy], config)
     return {
         "strategy": strategy, "symbol": symbol, "bars": r.bars,
         "total_return": r.total_return, "sharpe": r.sharpe,
@@ -94,7 +95,8 @@ async def evaluate_gate(
     fetched = await _bars(symbol, timeframe, bars_count)
     if not is_successful(fetched):
         return {"error": fetched.failure().message}
-    oos = walk_forward(strategy, symbol, fetched.unwrap(), STRATEGIES[strategy], BacktestConfig())
+    config = BacktestConfig(periods_per_year=periods_per_year(timeframe))
+    oos = walk_forward(strategy, symbol, fetched.unwrap(), STRATEGIES[strategy], config)
     verdict = evaluate(oos, GateCriteria())
     return {
         "strategy": strategy, "symbol": symbol,

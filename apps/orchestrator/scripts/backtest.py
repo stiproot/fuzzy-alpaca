@@ -14,7 +14,7 @@ from returns.pipeline import is_successful
 
 from orchestrator.application.backtest import run_backtest
 from orchestrator.application.signals import STRATEGIES
-from orchestrator.domain.backtest import BacktestConfig
+from orchestrator.domain.backtest import BacktestConfig, periods_per_year
 from orchestrator.infrastructure.backtests_repo import BacktestsRepo
 from orchestrator.infrastructure.bars import lookback_start, url_symbol
 from orchestrator.infrastructure.db import init_schema
@@ -45,7 +45,7 @@ async def main() -> None:
         raise SystemExit(f"bars fetch failed: {err.code} {err.message}")
     bars = fetched.unwrap()[-args.bars :]
 
-    config = BacktestConfig()
+    config = BacktestConfig(periods_per_year=periods_per_year(args.timeframe))
     result = run_backtest(
         args.strategy, args.symbol, bars, STRATEGIES[args.strategy], config
     )
