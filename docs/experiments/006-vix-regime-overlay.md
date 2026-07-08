@@ -5,7 +5,7 @@
 | **Date** | 2026-07-08 |
 | **Status** | refuted — both variants *reduce* basket Sharpe |
 | **One-liner** | Risk-off filters remove exactly the panic days where mean-reversion earns: 0.43 → 0.06 (vix_ts) / 0.33 (hy_oas); and the new SPY control shows the basket's 0.43 is only ~0.02 above beta on Sharpe |
-| **Prev / Next** | [005](005-diversified-basket.md) / [backlog](backlog.md) |
+| **Prev / Next** | [005](005-diversified-basket.md) / [007 — GTJA survivors](007-gtja-survivors-us.md) |
 
 **Hypothesis.** The 57-name bollinger mean-reversion basket (Exp 005: OOS Sharpe 0.43, DD 7.1%,
 100% positive folds) is held back by a Sharpe shortfall of 0.07, not by drawdown. Gating the basket
