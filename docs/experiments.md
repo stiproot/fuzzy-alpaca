@@ -1,8 +1,9 @@
 # Experiments
 
 The running, human-readable log of what we've tried to make paper money — especially what
-**failed**, and why. We operate a loop: **research → document → experiment → update → improve →
-repeat**. Nothing is cherry-picked; overfitting is called out, not hidden.
+**failed**, and why. We operate one loop: **research → document → experiment → validate → document**
+(the method lives in [`.claude/conventions.md`](../.claude/conventions.md)). Nothing is
+cherry-picked; overfitting is called out, not hidden.
 
 **The bar:** a strategy is only worth trading if it clears the walk-forward **gate**
 (`GateCriteria`: OOS Sharpe ≥ 0.5, positive OOS return, drawdown ≤ 25%, ≥ 5 trades, ≥ 50% positive

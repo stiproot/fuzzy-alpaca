@@ -16,6 +16,10 @@ quant signals propose; deterministic workflows execute against the typed, idempo
   order-safety stances). Read before changing gateway structure.
 - `docs/orchestration-guide.md` — how an orchestrator consumes the gateway; state-store design;
   intelligence-layer shape; guardrails.
+- `docs/experiments.md` — the running strategy-research log: every hypothesis, method, result and
+  refutation, honest about overfitting. The durable record of what edge we have (and don't). The
+  loop that produces it — **research → document → experiment → validate → document** — lives in
+  `.claude/conventions.md`.
 - `apps/gateway/openapi.json` (`bun run openapi`) — the authoritative wire contract.
 - `apps/*/README.md` — per-component runbook, scripts, env.
 - `docs/concepts/` — plain-language explainers for the domain.

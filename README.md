@@ -13,7 +13,27 @@ concepts for newcomers: [docs/concepts/](docs/concepts/).
 | Path | Component | Stack |
 |---|---|---|
 | [`apps/gateway`](apps/gateway) | Broker gateway — typed, idempotent Alpaca adapter | Effect-TS |
-| `apps/orchestrator` | Dapr-Workflows trading loops + intelligence *(building)* | Python |
+| [`apps/orchestrator`](apps/orchestrator) | Dapr-Workflows trading loops + strategy intelligence (signals, walk-forward gate, research agent) | Python |
+
+## How we find edge — the research loop
+
+Finding a profitable strategy is empirical, and **honesty is the whole game**. Every idea runs one
+loop: **research → document → experiment → validate → document**.
+
+1. **Research** — one falsifiable hypothesis (strategy / params / universe), from a human or the
+   research agent. One variable at a time.
+2. **Document** — write the hypothesis + method into [`docs/experiments.md`](docs/experiments.md)
+   *before* running it.
+3. **Experiment** — run it through the shared harness (`sweep`, `backtest`, `portfolio`), the same
+   pure machinery a live decision uses.
+4. **Validate** — the walk-forward **gate** (out-of-sample Sharpe / return / drawdown / folds) is
+   the arbiter. A pass on one window is a *hypothesis, not an edge*: it must hold on data it was not
+   selected on. Multiple-testing is assumed.
+5. **Document** — result → conclusion → improvement → next, back into the experiments log.
+   **Failures and refuted mirages are logged, not hidden** — that is the point.
+
+The gate is binding on the money path: an unproven strategy never trades.
+[`docs/experiments.md`](docs/experiments.md) is the running record of what edge we have — and don't.
 
 ## Conventions
 

@@ -47,3 +47,26 @@ Steering for anyone — human or agent — building in this repo. Minimal by int
 - **Verify against reality**, not just tests — drive the affected flow (paper account, live stack)
   where possible.
 - **Commit + push at milestone boundaries**, with the plan's Progress table updated.
+
+## Strategy research loop
+
+Finding edge is empirical, and honesty is the whole game. Every strategy idea goes through one
+loop — **research → document → experiment → validate → document**:
+
+1. **Research** — form one falsifiable hypothesis (a strategy/param/universe idea, from a human or
+   the research agent). Change one variable at a time.
+2. **Document** — write the hypothesis + method into `docs/experiments.md` *before* running, so the
+   result can't be rationalized after the fact.
+3. **Experiment** — run it through the shared harness (`scripts/sweep.py`, `scripts/backtest.py`,
+   `scripts/portfolio.py`), never a bespoke one-off — a research pass and a live decision must agree
+   by construction.
+4. **Validate** — the walk-forward **gate** is the arbiter (out-of-sample Sharpe/return/drawdown/
+   folds). A pass on one window is a *hypothesis, not an edge*; confirm on data — a symbol, a
+   universe, a window — it was **not** selected on. Assume multiple-testing: try N things and a few
+   look good by luck.
+5. **Document** — write result → conclusion → improvement → next hypothesis back into
+   `docs/experiments.md`. **Log failures and refutations, not just wins** — a killed mirage is a
+   result. Fold any lesson back into the harness so the next cycle can't repeat the mistake.
+
+The gate is binding on the money path: an unproven strategy never trades. Never weaken it, cherry-pick
+a passing config, or present a single-name/single-window pass as a proven edge.
