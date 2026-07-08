@@ -5,7 +5,7 @@
 | **Date** | 2026-07-08 |
 | **Status** | near-miss — sub-threshold; price-derived TA arc closed at OOS Sharpe ≈ 0.43 |
 | **One-liner** | Diversification collapses DD to 6-7% with 100% positive folds, but can't manufacture Sharpe the raw signal lacks |
-| **Prev / Next** | [004](004-equities-signal-sweep.md) / cycle 6 — see [backlog](backlog.md) |
+| **Prev / Next** | [004](004-equities-signal-sweep.md) / [006 — regime overlay](006-vix-regime-overlay.md) |
 
 **Hypothesis.** bollinger mean-reversion is positive on ~75-83% of large-caps but weak per name
 (Exp 4). An equal-weight, daily-rebalanced *basket* should diversify away idiosyncratic noise and lift

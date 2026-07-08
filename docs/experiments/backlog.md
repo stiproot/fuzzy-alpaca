@@ -21,7 +21,7 @@ tests run first and every kill is cheap.
 
 | Pri | Candidate | Family | Expected net Sharpe | Gate odds | Build cost | Data |
 |---|---|---|---|---|---|---|
-| 1 | VIX term-structure overlay on the 0.43 basket | regime overlay | basket 0.43 → 0.5–0.6 | ~40% | S (one free ingest) | CBOE/FRED, free |
+| ~~1~~ | ~~VIX term-structure overlay on the 0.43 basket~~ — ran as [006](006-vix-regime-overlay.md), **refuted** | regime overlay | — | — | — | ingest built ✓ |
 | 2 | Vol-risk-premium sleeve (SVXY/VIXY timed by VIX3M/VIX) | structural premium | 0.4–0.8 | 35–45% | S (reuses #1's ingest) | CBOE + Alpaca bars |
 | 3 | Overnight-only SPY/QQQ (+ weekend / post-earnings variants) | calendar anomaly | 0.0–0.3 | 10–20% | ~zero | already have |
 | 4 | Long-only multi-factor composite (momentum × low-vol/quality × value) | cross-sectional | 0.5–0.7 (beta-heavy) | ~40%* | M–L (EDGAR ingest) | Alpaca + SEC EDGAR, free |
@@ -33,16 +33,14 @@ tests run first and every kill is cheap.
 
 \* odds of a *meaningful* pass — see the beta caveat in "Harness prerequisites".
 
-### 1. VIX term-structure regime overlay on the existing basket
+### ~~1. VIX term-structure regime overlay on the existing basket~~ — refuted
 
-**Hypothesis.** Gating (or scaling) the 57-name bollinger mean-reversion basket by the VIX3M/VIX
-ratio (risk-on when > ~1.0) lifts portfolio OOS Sharpe from 0.43 above 0.5 without raising DD.
-**Why first.** Cheapest path from our strongest asset to a pass: the basket needs +0.07 Sharpe, and
-regime overlays are worth an estimated +0.1–0.2; data is a one-file free ingest (CBOE daily CSV /
-FRED `BAMLH0A0HYM2` as the alternative). **Discipline.** Pre-register at most two overlay variants
-(VIX3M/VIX and HY-OAS z-score); the multiple-testing surface of overlays is huge and this is
-exactly where mirages breed. **Kill signal.** If neither pre-registered overlay clears, do not try
-a third series. [Details](research/2026-07-08-event-driven-structural.md) §5.
+**Ran as [experiment 006](006-vix-regime-overlay.md) (2026-07-08): refuted on both pre-registered
+variants** — a risk-off filter removes exactly the panic days a mean-reversion book earns on
+(0.43 → 0.06 vix_ts / 0.33 hy_oas), and the new SPY beta control revealed the basket is only
+~0.02 Sharpe over buy-and-hold. Keep the lesson: regime filters belong on long-beta/carry books,
+not dip-buyers. The macro ingest (`infrastructure/macro.py`) and regime layer
+(`application/regime.py`) are built and reusable — #2 consumes them directly.
 
 ### 2. Volatility-risk-premium sleeve via vol ETPs
 
