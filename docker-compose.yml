@@ -2,6 +2,7 @@
 # The orchestrator calls the gateway over plain HTTP; only the orchestrator joins the Dapr mesh.
 services:
   postgres:
+    container_name: fa-postgres
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: alpaca
@@ -18,10 +19,12 @@ services:
       retries: 20
 
   placement:
+    container_name: fa-placement
     image: daprio/placement:edge
     command: ["./placement", "--port=50006"]
 
   scheduler:
+    container_name: fa-scheduler
     image: daprio/scheduler:edge
     command: ["./scheduler", "--port=50007", "--etcd-data-dir=/data"]
     # Host bind-mount with open perms — the scheduler mkdirs under /data as a
@@ -30,6 +33,7 @@ services:
       - ./dapr-etcd:/data
 
   gateway:
+    container_name: fa-gateway
     build:
       context: ./apps/gateway
     env_file:
@@ -42,6 +46,7 @@ services:
       - "3001:3000"
 
   orchestrator:
+    container_name: fa-orchestrator
     build:
       context: ./apps/orchestrator
     environment:
@@ -59,6 +64,7 @@ services:
         condition: service_started
 
   trading-mcp:
+    container_name: fa-trading-mcp
     build:
       context: ./apps/orchestrator
     command: ["uv", "run", "--no-dev", "python", "-m", "orchestrator.presentation.mcp_server"]
@@ -76,6 +82,7 @@ services:
         condition: service_healthy
 
   research-agent:
+    container_name: fa-research-agent
     build:
       context: ./apps/orchestrator
     command: ["uv", "run", "--no-dev", "python", "-m", "orchestrator.presentation.agent_app"]
@@ -95,6 +102,7 @@ services:
         condition: service_started
 
   research-agent-dapr:
+    container_name: fa-research-agent-dapr
     image: daprio/daprd:edge
     command:
       - "./daprd"
@@ -115,6 +123,7 @@ services:
       - scheduler
 
   orchestrator-dapr:
+    container_name: fa-orchestrator-dapr
     image: daprio/daprd:edge
     command:
       - "./daprd"
